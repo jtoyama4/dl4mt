@@ -396,7 +396,7 @@ def variation_layer(tparams, ctx_means, options, prefix='variation', ctx_y_means
 
     def _gaussian_noise_step(mu, sigma, noise, z, add_noise=True):
         if not add_noise:
-            return mu.reshape(mu.shape[0])
+            return mu.flatten()
         else:
             SIGMA = tensor.diag(sigma)
             result = mu + tensor.dot(SIGMA, noise)
@@ -609,7 +609,7 @@ def gru_cond_layer(tparams, state_below, options, prefix='gru',
                    tparams[_p(prefix, 'bx_nl')]]
 
     if one_step:
-        rval = _step(*(seqs + [init_state, None, None, pctx_, context,he] +
+        rval = _step(*(seqs + [init_state, None, None, pctx_, context, he] +
                        shared_vars))
     else:
         rval, updates = theano.scan(_step,
@@ -842,7 +842,9 @@ def build_sampler(tparams, options, trng, use_noise):
     # x: 1 x 1
     y = tensor.vector('y_sampler', dtype='int64')
     init_state = tensor.matrix('init_state', dtype='float32')
-
+    
+    sample_z,_ = get_layer('variation')[1](tparams, ctx_mean,options,prefix='variation',training=False)
+    
     # if it's the first word, emb should be all zero and it is indicated by -1
     emb = tensor.switch(y[:, None] < 0,
                         tensor.alloc(0., 1, tparams['Wemb_dec'].shape[1]),
@@ -852,7 +854,7 @@ def build_sampler(tparams, options, trng, use_noise):
     proj = get_layer(options['decoder'])[1](tparams, emb, options,
                                             prefix='decoder',
                                             mask=None, context=ctx,
-                                            one_step=True,
+                                            one_step=True,he=sample_z,
                                             init_state=init_state)
     # get the next hidden state
     next_state = proj[0]
