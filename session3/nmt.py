@@ -717,14 +717,14 @@ def build_model(tparams, options):
 
     # word embedding for forward rnn (target)
     emby = tparams['Wemb_y'][y.flatten()]
-    emby= emb.reshape([n_timesteps_trg, n_samples, options['dim_word']])
+    emby= emby.reshape([n_timesteps_trg, n_samples, options['dim_word']])
     projy = get_layer(options['encoder'])[1](tparams, emby, options,
                                             prefix='encoder',
                                             mask=y_mask)
 
     #word embedding for backward rnn (target)
     embyr = tparams['Wemb_y'][yr.flatten()]
-    embyr = embr.reshape([n_timesteps_trg, n_samples, options['dim_word']])
+    embyr = embyr.reshape([n_timesteps_trg, n_samples, options['dim_word']])
     projry = get_layer(options['encoder'])[1](tparams, embyr, options,
                                              prefix='encoder_r',
                                              mask=yr_mask)
