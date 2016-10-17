@@ -398,15 +398,16 @@ def variation_layer(tparams, ctx_means, options, prefix='variation', ctx_y_means
         if not add_noise:
             return mu.reshape(mu.shape[0])
         else:
-            sigma = tensor.diag(sigma)
-            result = mu + tensor.dot(sigma, noise)
-            return tensor.reshape(result,dimv)
+            SIGMA = tensor.diag(sigma)
+            result = mu + tensor.dot(SIGMA, noise)
+            return result.flatten()
     trng = RandomStreams(1234)
     normal_noise = trng.normal((dimv,))
     if training:
         seqs = [post_mu, post_sigma, normal_noise]
     else:
         seqs = [pri_mu, pri_sigma, normal_noise]
+    
     sample_func = lambda m,s,n,z: _gaussian_noise_step(m,s,n,z,add_noise=False)
     if training:
         sample_func = lambda m,s,n,z: _gaussian_noise_step(m,s,n,z,add_noise=True)
