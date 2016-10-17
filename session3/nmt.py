@@ -539,7 +539,7 @@ def gru_cond_layer(tparams, state_below, options, prefix='gru',
     state_below_ = tensor.dot(state_below, tparams[_p(prefix, 'W')]) +\
         tparams[_p(prefix, 'b')]
 
-    def _step_slice(m_, x_, xx_, h_, ctx_, alpha_, pctx_, cc_,
+    def _step_slice(m_, x_, xx_, h_, ctx_, alpha_, pctx_, cc_,he,
                     U, Wc, Vc, W_comb_att, U_att, c_tt, Ux, Wcx, Vcx,
                     U_nl, Ux_nl, b_nl, bx_nl):
         preact1 = tensor.dot(h_, U)
@@ -609,7 +609,7 @@ def gru_cond_layer(tparams, state_below, options, prefix='gru',
                    tparams[_p(prefix, 'bx_nl')]]
 
     if one_step:
-        rval = _step(*(seqs + [init_state, None, None, pctx_, context] +
+        rval = _step(*(seqs + [init_state, None, None, pctx_, context,he] +
                        shared_vars))
     else:
         rval, updates = theano.scan(_step,
@@ -619,7 +619,7 @@ def gru_cond_layer(tparams, state_below, options, prefix='gru',
                                                                context.shape[2]),
                                                   tensor.alloc(0., n_samples,
                                                                context.shape[0])],
-                                    non_sequences=[pctx_, context]+shared_vars,
+                                    non_sequences=[pctx_, context, he]+shared_vars,
                                     name=_p(prefix, '_layers'),
                                     n_steps=nsteps,
                                     profile=profile,
