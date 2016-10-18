@@ -993,7 +993,7 @@ def gen_sample(tparams, f_init, f_next, x, options, trng=None, k=1, maxlen=30,
 
 
 # calculate the log probablities on a given corpus using translation model
-def pred_probs(f_log_probs, prepare_data, options, iterator, verbose=True, training=True):
+def pred_probs(f_log_probs, prepare_data, options, iterator, verbose=True):
     probs = []
 
     n_done = 0
@@ -1005,7 +1005,7 @@ def pred_probs(f_log_probs, prepare_data, options, iterator, verbose=True, train
                                             n_words_src=options['n_words_src'],
                                             n_words=options['n_words'])
 
-        pprobs = f_log_probs(x, x_mask, y, y_mask,training)
+        pprobs = f_log_probs(x, x_mask, y, y_mask)
         for pp in pprobs:
             probs.append(pp)
 
