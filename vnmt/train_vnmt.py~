@@ -1,9 +1,7 @@
 import numpy
 import os
 
-print "This is nmt"
-
-from nmt import train
+from vnmt import train
 
 
 def main(job_id, params):

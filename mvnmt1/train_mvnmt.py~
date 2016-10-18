@@ -1,9 +1,7 @@
 import numpy
 import os
-
-print "This is nmt"
-
-from nmt import train
+print "This is MVNMT type 1"
+from mvnmt import train
 
 
 def main(job_id, params):
@@ -14,6 +12,8 @@ def main(job_id, params):
                      dim_word=params['dim_word'][0],
                      dim=params['dim'][0],
                      dimv=params['dimv'][0],
+                     dim_pi=params['dim_pi'][0],
+                     dim_pic=params['dim_pic'][0],
                      n_words=params['n-words'][1],
                      n_words_src=params['n-words'][0],
                      decay_c=params['decay-c'][0],
@@ -24,12 +24,14 @@ def main(job_id, params):
                      batch_size=128,
                      valid_batch_size=128,
                      datasets=['%s/flickr30k/bitext.train.en.tok.txt' % basedir,
-                               '%s/flickr30k/bitext.train.de.tok.txt' % basedir],
+                               '%s/flickr30k/bitext.train.de.tok.txt' % basedir,
+                               '%s_flickr30k/fc7.train.npy'],
                      valid_datasets=['%s/flickr30k/bitext.val.en.tok.txt' % basedir,
-                                     '%s/flickr30k/bitext.val.de.tok.txt' % basedir],
+                                     '%s/flickr30k/bitext.val.de.tok.txt' % basedir,
+                                     '%s/flickr30k/fc7.val.npy'],
                      dictionaries=['%s/flickr30k/bitext.train.en.tok.txt.pkl' % basedir,
                                    '%s/flickr30k/bitext.train.de.tok.txt.pkl' % basedir],
-                     validFreq=1000,
+                     validFreq=10,
                      dispFreq=1,
                      saveFreq=1000,
                      sampleFreq=50,
@@ -44,6 +46,8 @@ if __name__ == '__main__':
         'dim_word': [256],
         'dim': [256],
         'dimv': [100],
+        'dim_pi': [4096],
+        'dim_pic': [256],
         #'n-words': [30000],
         'n-words': [10211,18723],
         'optimizer': ['adadelta'],

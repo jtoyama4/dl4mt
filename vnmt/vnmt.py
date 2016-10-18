@@ -50,7 +50,6 @@ def dropout_layer(state_before, use_noise, trng):
         state_before * 0.5)
     return proj
 
-
 # make prefix-appended name
 def _p(pp, name):
     return '%s_%s' % (pp, name)
@@ -79,6 +78,7 @@ def load_params(path, params):
 layers = {'ff': ('param_init_fflayer', 'fflayer'),
           'gru': ('param_init_gru', 'gru_layer'),
           'gru_cond': ('param_init_gru_cond', 'gru_cond_layer'),
+          'variation': ('param_init_variation', 'variation_layer')
           }
 
 
@@ -320,9 +320,111 @@ def gru_layer(tparams, state_below, options, prefix='gru', mask=None,
     return rval
 
 
+def param_init_variation(options, params, prefix='variation',
+                         nin=None, dim=None, dimctx=None,dimctx_y=None,
+                         nin_nonlin=None, dim_nonlin=None,dimv=None):
+    if nin is None:
+        nin = options['dim']
+    if dim is None:
+        dim = options['dim']
+    if dimctx is None:
+        dimctx = options['dim']
+    if dimctx_y is None:
+        dimctx_y = options['dim']
+    if nin_nonlin is None:
+        nin_nonlin = nin
+    if dim_nonlin is None:
+        dim_nonlin = dim
+    if dimv is None:
+        dimv = options['dimv']
+
+    W_pri = norm_weight(dimctx,dimv)
+    params[_p(prefix, 'W_pri')] = W_pri
+    params[_p(prefix, 'W_pri_b')] = numpy.zeros((dimv,)).astype('float32')
+    
+    W_pri_mu = norm_weight(dimv,dimv)
+    params[_p(prefix, 'W_pri_mu')] = W_pri_mu
+    params[_p(prefix, 'W_pri_mu_b')] = numpy.zeros((dimv,)).astype('float32')
+
+    W_pri_sigma = norm_weight(dimv,dimv)
+    params[_p(prefix, 'W_pri_sigma')] = W_pri_sigma
+    params[_p(prefix, 'W_pri_sigma_b')] = numpy.zeros((dimv,)).astype('float32')
+
+    W_post = numpy.concatenate([norm_weight(dimctx,dimv),norm_weight(dimctx_y,dimv)], axis = 0)
+    params[_p(prefix, 'W_post')] = W_post
+    params[_p(prefix, 'W_post_b')] = numpy.zeros((dimv,)).astype('float32')
+    
+    W_post_mu = norm_weight(dimv,dimv)
+    params[_p(prefix, 'W_post_mu')] = W_post_mu
+    params[_p(prefix, 'W_post_mu_b')] = numpy.zeros((dimv,)).astype('float32')
+
+    W_post_sigma = norm_weight(dimv,dimv)
+    params[_p(prefix, 'W_post_sigma')] = W_post_sigma
+    params[_p(prefix, 'W_post_sigma_b')] = numpy.zeros((dimv,)).astype('float32')
+    
+    return params
+
+def variation_layer(tparams, ctx_means, options, prefix='variation', ctx_y_means=None,mask=None,training=True, **kwargs):
+    #state_belows = [ctx_means,cty_means]
+    dimv = 100
+    
+    if training:
+        assert ctx_y_means
+    else:
+        assert not ctx_y_means
+
+    nsteps = ctx_means.shape[0]
+
+    # prepare h_z' for both posterior and prior
+    pri_h = tensor.tanh(tensor.dot(ctx_means, tparams[_p(prefix, 'W_pri')]) + tparams[_p(prefix, 'W_pri_b')])
+    if training:
+        post_h = tensor.tanh(tensor.dot(concatenate([ctx_means, ctx_y_means],axis=1), tparams[_p(prefix, 'W_post')]) + tparams[_p(prefix, 'W_post_b')])
+    
+    #Gaussian Parameters w.r.t Prior and Posterior
+    pri_mu = tensor.dot(pri_h, tparams[_p(prefix, 'W_pri_mu')]) + tparams[_p(prefix, 'W_pri_mu_b')]
+    pri_log_sigma = (tensor.dot(pri_h, tparams[_p(prefix, 'W_pri_sigma')]) + tparams[_p(prefix, 'W_pri_sigma_b')]) * 0.5
+    pri_sigma = tensor.exp(pri_log_sigma)
+    if training:
+        post_mu = tensor.dot(post_h, tparams[_p(prefix, 'W_post_mu')]) + tparams[_p(prefix, 'W_post_mu_b')]
+        post_log_sigma = (tensor.dot(post_h, tparams[_p(prefix, 'W_post_sigma')]) + tparams[_p(prefix, 'W_post_sigma_b')]) * 0.5
+        post_sigma = tensor.exp(post_log_sigma)
+    
+    #Compute the KL objective
+    kl_cost = 0
+    epsilon = numpy.finfo(numpy.float32).eps
+    if training:
+        kl = (pri_log_sigma - post_log_sigma) + ((post_sigma**2) + ((post_mu - pri_mu)**2)) / (epsilon + 2 * pri_sigma**2) -0.5
+        kl_cost = tensor.sum(kl)
+
+    def _gaussian_noise_step(mu, sigma, noise, z, add_noise=True):
+        if not add_noise:
+            return mu
+        else:
+            SIGMA = tensor.diag(sigma)
+            result = mu + tensor.dot(SIGMA, noise)
+            return result
+    trng = RandomStreams(1234)
+    normal_noise = trng.normal((128,dimv))
+    if training:
+        seqs = [post_mu, post_sigma, normal_noise]
+    else:
+        seqs = [pri_mu, pri_sigma, normal_noise]
+    
+    sample_func = lambda m,s,n,z: _gaussian_noise_step(m,s,n,z,add_noise=False)
+    if training:
+        sample_func = lambda m,s,n,z: _gaussian_noise_step(m,s,n,z,add_noise=True)
+
+    sample_z, _ = theano.scan(sample_func,
+                    sequences=seqs,
+                              outputs_info=[tensor.alloc(0.,dimv)],
+                              name="variation_z_%s" % prefix,n_steps = nsteps)
+    assert sample_z != None, 'man , sample z is NONE!!'
+
+    return sample_z, kl_cost
+
 # Conditional GRU layer with Attention
 def param_init_gru_cond(options, params, prefix='gru_cond',
-                        nin=None, dim=None, dimctx=None,
+                        nin=None, dim=None, dimctx=None,dimv=None,
                         nin_nonlin=None, dim_nonlin=None):
     if nin is None:
         nin = options['dim']
@@ -334,6 +436,8 @@ def param_init_gru_cond(options, params, prefix='gru_cond',
         nin_nonlin = nin
     if dim_nonlin is None:
         dim_nonlin = dim
+    if dimv is None:
+        dimv = options['dimv']
 
     W = numpy.concatenate([norm_weight(nin, dim),
                            norm_weight(nin, dim)], axis=1)
@@ -365,6 +469,13 @@ def param_init_gru_cond(options, params, prefix='gru_cond',
     Wcx = norm_weight(dimctx, dim)
     params[_p(prefix, 'Wcx')] = Wcx
 
+    #variation
+    Vc = norm_weight(dimv,dim*2)
+    params[_p(prefix, 'Vc')] = Vc
+
+    Vcx = norm_weight(dimv, dim)
+    params[_p(prefix, 'Vcx')] = Vcx
+
     # attention: combined -> hidden
     W_comb_att = norm_weight(dim, dimctx)
     params[_p(prefix, 'W_comb_att')] = W_comb_att
@@ -389,7 +500,7 @@ def param_init_gru_cond(options, params, prefix='gru_cond',
 def gru_cond_layer(tparams, state_below, options, prefix='gru',
                    mask=None, context=None, one_step=False,
                    init_memory=None, init_state=None,
-                   context_mask=None,
+                   context_mask=None,he=None,
                    **kwargs):
 
     assert context, 'Context must be provided'
@@ -430,8 +541,8 @@ def gru_cond_layer(tparams, state_below, options, prefix='gru',
     state_below_ = tensor.dot(state_below, tparams[_p(prefix, 'W')]) +\
         tparams[_p(prefix, 'b')]
 
-    def _step_slice(m_, x_, xx_, h_, ctx_, alpha_, pctx_, cc_,
-                    U, Wc, W_comb_att, U_att, c_tt, Ux, Wcx,
+    def _step_slice(m_, x_, xx_, h_, ctx_, alpha_, pctx_, cc_,he,
+                    U, Wc, Vc, W_comb_att, U_att, c_tt, Ux, Wcx, Vcx,
                     U_nl, Ux_nl, b_nl, bx_nl):
         preact1 = tensor.dot(h_, U)
         preact1 += x_
@@ -464,6 +575,7 @@ def gru_cond_layer(tparams, state_below, options, prefix='gru',
 
         preact2 = tensor.dot(h1, U_nl)+b_nl
         preact2 += tensor.dot(ctx_, Wc)
+        preact2 += tensor.dot(he, Vc)
         preact2 = tensor.nnet.sigmoid(preact2)
 
         r2 = _slice(preact2, 0, dim)
@@ -472,7 +584,7 @@ def gru_cond_layer(tparams, state_below, options, prefix='gru',
         preactx2 = tensor.dot(h1, Ux_nl)+bx_nl
         preactx2 *= r2
         preactx2 += tensor.dot(ctx_, Wcx)
-
+        preactx2 += tensor.dot(he, Vcx)
         h2 = tensor.tanh(preactx2)
 
         h2 = u2 * h1 + (1. - u2) * h2
@@ -486,18 +598,20 @@ def gru_cond_layer(tparams, state_below, options, prefix='gru',
 
     shared_vars = [tparams[_p(prefix, 'U')],
                    tparams[_p(prefix, 'Wc')],
+                   tparams[_p(prefix, 'Vc')],
                    tparams[_p(prefix, 'W_comb_att')],
                    tparams[_p(prefix, 'U_att')],
                    tparams[_p(prefix, 'c_tt')],
                    tparams[_p(prefix, 'Ux')],
                    tparams[_p(prefix, 'Wcx')],
+                   tparams[_p(prefix, 'Vcx')],
                    tparams[_p(prefix, 'U_nl')],
                    tparams[_p(prefix, 'Ux_nl')],
                    tparams[_p(prefix, 'b_nl')],
                    tparams[_p(prefix, 'bx_nl')]]
 
     if one_step:
-        rval = _step(*(seqs + [init_state, None, None, pctx_, context] +
+        rval = _step(*(seqs + [init_state, None, None, pctx_, context, he] +
                        shared_vars))
     else:
         rval, updates = theano.scan(_step,
@@ -507,7 +621,7 @@ def gru_cond_layer(tparams, state_below, options, prefix='gru',
                                                                context.shape[2]),
                                                   tensor.alloc(0., n_samples,
                                                                context.shape[0])],
-                                    non_sequences=[pctx_, context]+shared_vars,
+                                    non_sequences=[pctx_, context, he]+shared_vars,
                                     name=_p(prefix, '_layers'),
                                     n_steps=nsteps,
                                     profile=profile,
@@ -522,6 +636,7 @@ def init_params(options):
     # embedding
     params['Wemb'] = norm_weight(options['n_words_src'], options['dim_word'])
     params['Wemb_dec'] = norm_weight(options['n_words'], options['dim_word'])
+    params['Wemb_y'] = norm_weight(options['n_words'], options['dim_word'])
 
     # encoder: bidirectional RNN
     params = get_layer(options['encoder'])[0](options, params,
@@ -532,11 +647,16 @@ def init_params(options):
                                               prefix='encoder_r',
                                               nin=options['dim_word'],
                                               dim=options['dim'])
+   
     ctxdim = 2 * options['dim']
-
+    
     # init_state, init_cell
     params = get_layer('ff')[0](options, params, prefix='ff_state',
                                 nin=ctxdim, nout=options['dim'])
+
+    # variation
+    params = get_layer('variation')[0](options, params, prefix='variation',
+                                       dimctx=ctxdim, dimctx_y=ctxdim, dimv=options['dimv'])
     # decoder
     params = get_layer(options['decoder'])[0](options, params,
                                               prefix='decoder',
@@ -576,17 +696,21 @@ def build_model(tparams, options):
     # for the backward rnn, we just need to invert x and x_mask
     xr = x[::-1]
     xr_mask = x_mask[::-1]
+    yr = y[::-1]
+    yr_mask = y_mask[::-1]
 
     n_timesteps = x.shape[0]
     n_timesteps_trg = y.shape[0]
     n_samples = x.shape[1]
-
+    n_samples_y = y.shape[1]
+    
     # word embedding for forward rnn (source)
     emb = tparams['Wemb'][x.flatten()]
     emb = emb.reshape([n_timesteps, n_samples, options['dim_word']])
     proj = get_layer(options['encoder'])[1](tparams, emb, options,
                                             prefix='encoder',
                                             mask=x_mask)
+
     # word embedding for backward rnn (source)
     embr = tparams['Wemb'][xr.flatten()]
     embr = embr.reshape([n_timesteps, n_samples, options['dim_word']])
@@ -594,15 +718,39 @@ def build_model(tparams, options):
                                              prefix='encoder_r',
                                              mask=xr_mask)
 
+    # word embedding for forward rnn (target)
+    emby = tparams['Wemb_y'][y.flatten()]
+    emby= emby.reshape([n_timesteps_trg, n_samples, options['dim_word']])
+    projy = get_layer(options['encoder'])[1](tparams, emby, options,
+                                            prefix='encoder',
+                                            mask=y_mask)
+
+    #word embedding for backward rnn (target)
+    embyr = tparams['Wemb_y'][yr.flatten()]
+    embyr = embyr.reshape([n_timesteps_trg, n_samples, options['dim_word']])
+    projry = get_layer(options['encoder'])[1](tparams, embyr, options,
+                                             prefix='encoder_r',
+                                             mask=yr_mask)
+
     # context will be the concatenation of forward and backward rnns
     ctx = concatenate([proj[0], projr[0][::-1]], axis=proj[0].ndim-1)
-
+    ctx_y = concatenate([projy[0], projry[0][::-1]], axis=projy[0].ndim-1)
+    
     # mean of the context (across time) will be used to initialize decoder rnn
     ctx_mean = (ctx * x_mask[:, :, None]).sum(0) / x_mask.sum(0)[:, None]
-
+    ctx_y_mean = (ctx_y * y_mask[:, :, None]).sum(0) / y_mask.sum(0)[:, None]
+    
     # or you can use the last state of forward + backward encoder rnns
     # ctx_mean = concatenate([proj[0][-1], projr[0][-1]], axis=proj[0].ndim-2)
-
+    
+    #variation
+    """if training:
+        sample_z,kl_cost = get_layer('variation')[1](tparams, ctx_mean,options,prefix='variation',ctx_y_means=ctx_y_mean,training=True)
+    else:
+        sample_z,cost = get_layer('variation')[1](tparams, ctx_mean,options,prefix='variation',training=False)
+    """
+    sample_z,kl_cost = get_layer('variation')[1](tparams, ctx_mean,options,prefix='variation',ctx_y_means=ctx_y_mean,training=True)
+    
     # initial decoder state
     init_state = get_layer('ff')[1](tparams, ctx_mean, options,
                                     prefix='ff_state', activ='tanh')
@@ -616,12 +764,14 @@ def build_model(tparams, options):
     emb_shifted = tensor.zeros_like(emb)
     emb_shifted = tensor.set_subtensor(emb_shifted[1:], emb[:-1])
     emb = emb_shifted
-
+    
+    
     # decoder - pass through the decoder conditional gru with attention
     proj = get_layer(options['decoder'])[1](tparams, emb, options,
                                             prefix='decoder',
                                             mask=y_mask, context=ctx,
                                             context_mask=x_mask,
+                                            he=sample_z,
                                             one_step=False,
                                             init_state=init_state)
     # hidden states of the decoder gru
@@ -652,12 +802,13 @@ def build_model(tparams, options):
     # cost
     y_flat = y.flatten()
     y_flat_idx = tensor.arange(y_flat.shape[0]) * options['n_words'] + y_flat
-    cost = -tensor.log(probs.flatten()[y_flat_idx])
+
+    cost = -tensor.log(probs.flatten()[y_flat_idx])        
     cost = cost.reshape([y.shape[0], y.shape[1]])
     cost = (cost * y_mask).sum(0)
 
-    return trng, use_noise, x, x_mask, y, y_mask, opt_ret, cost
-
+    return trng, use_noise, x, x_mask, y, y_mask, opt_ret, cost, kl_cost
+ 
 
 # build a sampler
 def build_sampler(tparams, options, trng, use_noise):
@@ -695,7 +846,9 @@ def build_sampler(tparams, options, trng, use_noise):
     # x: 1 x 1
     y = tensor.vector('y_sampler', dtype='int64')
     init_state = tensor.matrix('init_state', dtype='float32')
-
+    
+    sample_z,_ = get_layer('variation')[1](tparams, ctx_mean,options,prefix='variation',training=False)
+    
     # if it's the first word, emb should be all zero and it is indicated by -1
     emb = tensor.switch(y[:, None] < 0,
                         tensor.alloc(0., 1, tparams['Wemb_dec'].shape[1]),
@@ -705,7 +858,7 @@ def build_sampler(tparams, options, trng, use_noise):
     proj = get_layer(options['decoder'])[1](tparams, emb, options,
                                             prefix='decoder',
                                             mask=None, context=ctx,
-                                            one_step=True,
+                                            one_step=True,he=sample_z,
                                             init_state=init_state)
     # get the next hidden state
     next_state = proj[0]
@@ -727,7 +880,7 @@ def build_sampler(tparams, options, trng, use_noise):
 
     # compute the softmax probability
     next_probs = tensor.nnet.softmax(logit)
-
+    
     # sample from softmax distribution to get the sample
     next_sample = trng.multinomial(pvals=next_probs).argmax(1)
 
@@ -981,6 +1134,7 @@ def sgd(lr, tparams, grads, x, mask, y, cost):
 
 def train(dim_word=100,  # word vector dimensionality
           dim=1000,  # the number of LSTM units
+          dimv=100,
           encoder='gru',
           decoder='gru_cond',
           patience=10,  # early stopping patience
@@ -1056,7 +1210,7 @@ def train(dim_word=100,  # word vector dimensionality
     trng, use_noise, \
         x, x_mask, y, y_mask, \
         opt_ret, \
-        cost = \
+        cost, kl_cost = \
         build_model(tparams, model_options)
     inps = [x, x_mask, y, y_mask]
 
@@ -1069,7 +1223,8 @@ def train(dim_word=100,  # word vector dimensionality
     print 'Done'
 
     cost = cost.mean()
-
+    
+    cost += kl_cost
     # apply L2 regularization on weights
     if decay_c > 0.:
         decay_c = theano.shared(numpy.float32(decay_c), name='decay_c')
