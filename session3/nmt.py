@@ -367,11 +367,14 @@ def param_init_variation(options, params, prefix='variation',
 def variation_layer(tparams, ctx_means, options, prefix='variation', ctx_y_means=None,mask=None,training=True, **kwargs):
     #state_belows = [ctx_means,cty_means]
     dimv = 100
+    
     if training:
         assert ctx_y_means
     else:
         assert not ctx_y_means
+
     nsteps = ctx_means.shape[0]
+
     # prepare h_z' for both posterior and prior
     pri_h = tensor.tanh(tensor.dot(ctx_means, tparams[_p(prefix, 'W_pri')]) + tparams[_p(prefix, 'W_pri_b')])
     if training:
@@ -379,29 +382,28 @@ def variation_layer(tparams, ctx_means, options, prefix='variation', ctx_y_means
     
     #Gaussian Parameters w.r.t Prior and Posterior
     pri_mu = tensor.dot(pri_h, tparams[_p(prefix, 'W_pri_mu')]) + tparams[_p(prefix, 'W_pri_mu_b')]
-    pri_log_sigma = tensor.dot(pri_h, tparams[_p(prefix, 'W_pri_sigma')]) + tparams[_p(prefix, 'W_pri_sigma_b')] * 0.5
+    pri_log_sigma = (tensor.dot(pri_h, tparams[_p(prefix, 'W_pri_sigma')]) + tparams[_p(prefix, 'W_pri_sigma_b')]) * 0.5
     pri_sigma = tensor.exp(pri_log_sigma)
     if training:
         post_mu = tensor.dot(post_h, tparams[_p(prefix, 'W_post_mu')]) + tparams[_p(prefix, 'W_post_mu_b')]
-        post_log_sigma = tensor.dot(post_h, tparams[_p(prefix, 'W_post_sigma')]) + tparams[_p(prefix, 'W_post_sigma_b')] * 0.5
+        post_log_sigma = (tensor.dot(post_h, tparams[_p(prefix, 'W_post_sigma')]) + tparams[_p(prefix, 'W_post_sigma_b')]) * 0.5
         post_sigma = tensor.exp(post_log_sigma)
     
     #Compute the KL objective
-
     kl_cost = 0
     if training:
-        kl = (pri_log_sigma - post_log_sigma) + 0.5 * ((post_sigma * post_sigma) + ((post_mu * post_mu) - (pri_mu*pri_mu))) / 2 * pri_sigma * pri_sigma -0.5
+        kl = (pri_log_sigma - post_log_sigma) + ((post_sigma**2) + ((post_mu - pri_mu)**2)) / (2 * pri_sigma**2) -0.5
         kl_cost = tensor.sum(kl)
 
     def _gaussian_noise_step(mu, sigma, noise, z, add_noise=True):
         if not add_noise:
-            return mu.flatten()
+            return mu
         else:
             SIGMA = tensor.diag(sigma)
             result = mu + tensor.dot(SIGMA, noise)
-            return result.flatten()
+            return result
     trng = RandomStreams(1234)
-    normal_noise = trng.normal((dimv,))
+    normal_noise = trng.normal((128,dimv))
     if training:
         seqs = [post_mu, post_sigma, normal_noise]
     else:
@@ -414,9 +416,9 @@ def variation_layer(tparams, ctx_means, options, prefix='variation', ctx_y_means
     sample_z, _ = theano.scan(sample_func,
                     sequences=seqs,
                               outputs_info=[tensor.alloc(0.,dimv)],
-                    name="variation_z_%s" % prefix,
-                              n_steps = dimv)
+                              name="variation_z_%s" % prefix,n_steps = nsteps)
     assert sample_z != None, 'man , sample z is NONE!!'
+
     return sample_z, kl_cost
 
 # Conditional GRU layer with Attention
