@@ -33,7 +33,7 @@ def main(job_id, params):
                                      '%s/flickr30k/fc7.val.npy' % basedir],
                      dictionaries=['%s/flickr30k/bitext.train.en.tok.txt.pkl' % basedir,
                                    '%s/flickr30k/bitext.train.de.tok.txt.pkl' % basedir],
-                     validFreq=10,
+                     validFreq=1000,
                      dispFreq=1,
                      saveFreq=1000,
                      sampleFreq=50,

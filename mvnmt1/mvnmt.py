@@ -780,6 +780,9 @@ def build_model(tparams, options, training=True):
     # ctx_mean = concatenate([proj[0][-1], projr[0][-1]], axis=proj[0].ndim-2)
     
     #variation
+    if not training:
+        ctx_y_mean = None
+        pic = None
 
     sample_z,kl_cost = get_layer('variation')[1](tparams, ctx_mean,options,prefix='variation',ctx_y_means=ctx_y_mean,pic=pic,training=training)
     
@@ -838,6 +841,9 @@ def build_model(tparams, options, training=True):
     cost = -tensor.log(probs.flatten()[y_flat_idx])        
     cost = cost.reshape([y.shape[0], y.shape[1]])
     cost = (cost * y_mask).sum(0)
+
+    if not training:
+        return trng, use_noise, x, x_mask, y, y_mask, opt_ret, cost
 
     return trng, use_noise, x, x_mask, y, y_mask, pi, opt_ret, cost, kl_cost
  
@@ -1034,7 +1040,7 @@ def pred_probs(f_log_probs, prepare_data, options, iterator, verbose=True):
     for x, y, pi in iterator:
         n_done += len(x)
 
-        x, x_mask, y, y_mask, pi = prepare_data(x, y,
+        x, x_mask, y, y_mask, _ = prepare_data(x, y,
                                             n_words_src=options['n_words_src'],
                                             n_words=options['n_words'])
 
@@ -1248,6 +1254,13 @@ def train(dim_word=100,  # word vector dimensionality
         build_model(tparams, model_options)
     inps = [x, x_mask, y, y_mask, pi]
 
+    val_trng, val_use_noise, \
+        val_x, val_x_mask, val_y, val_y_mask,\
+        val_opt_ret, \
+        val_cost = \
+        build_model(tparams, model_options,training=False)
+    val_inps = [val_x, val_x_mask, val_y, val_y_mask]
+
     print 'Building sampler'
     f_init, f_next = build_sampler(tparams, model_options, trng, use_noise)
 
@@ -1255,7 +1268,11 @@ def train(dim_word=100,  # word vector dimensionality
     print 'Building f_log_probs...',
     f_log_probs = theano.function(inps, cost, profile=profile)
     print 'Done'
-
+    
+    #f_log_probs for validation
+    print 'BUilding f_log_probs for validation...',
+    val_f_log_probs = theano.function(val_inps, val_cost, profile=profile)
+    
     cost = cost.mean()
     
     cost += kl_cost
@@ -1429,8 +1446,8 @@ def train(dim_word=100,  # word vector dimensionality
 
             # validate model on validation set and early stop if necessary
             if numpy.mod(uidx, validFreq) == 0:
-                use_noise.set_value(0.)
-                valid_errs = pred_probs(f_log_probs, prepare_data,
+                val_use_noise.set_value(0.)
+                valid_errs = pred_probs(val_f_log_probs, prepare_data,
                                         model_options, valid)
                 valid_err = valid_errs.mean()
                 history_errs.append(valid_err)
