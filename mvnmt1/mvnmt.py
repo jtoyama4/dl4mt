@@ -159,27 +159,33 @@ def concatenate(tensor_list, axis=0):
 
 
 # batch preparation
-def prepare_data(seqs_x, seqs_y, maxlen=None, n_words_src=30000,
+def prepare_data(seqs_x, seqs_y, images=None, maxlen=None, n_words_src=30000,
                  n_words=30000):
     # x: a list of sentences
     lengths_x = [len(s) for s in seqs_x]
     lengths_y = [len(s) for s in seqs_y]
+    if not images:
+        images = [0 for s in seqs_x]
 
     if maxlen is not None:
         new_seqs_x = []
         new_seqs_y = []
         new_lengths_x = []
         new_lengths_y = []
-        for l_x, s_x, l_y, s_y in zip(lengths_x, seqs_x, lengths_y, seqs_y):
+        new_images = []
+
+        for l_x, s_x, l_y, s_y, p in zip(lengths_x, seqs_x, lengths_y, seqs_y, images):
             if l_x < maxlen and l_y < maxlen:
                 new_seqs_x.append(s_x)
                 new_lengths_x.append(l_x)
                 new_seqs_y.append(s_y)
                 new_lengths_y.append(l_y)
+                new_images.append(p)
         lengths_x = new_lengths_x
         seqs_x = new_seqs_x
         lengths_y = new_lengths_y
         seqs_y = new_seqs_y
+        images = new_images
 
         if len(lengths_x) < 1 or len(lengths_y) < 1:
             return None, None, None, None
@@ -198,7 +204,7 @@ def prepare_data(seqs_x, seqs_y, maxlen=None, n_words_src=30000,
         y[:lengths_y[idx], idx] = s_y
         y_mask[:lengths_y[idx]+1, idx] = 1.
 
-    return x, x_mask, y, y_mask
+    return x, x_mask, y, y_mask, images
 
 
 # feedforward layer: affine transformation + point-wise nonlinearity
@@ -340,7 +346,7 @@ def gru_layer(tparams, state_below, options, prefix='gru', mask=None,
 
 
 def param_init_variation(options, params, prefix='variation',
-                         nin=None, dim=None, dimctx=None,dimctx_y=None,
+                         nin=None, dim=None, dimctx=None,dimctx_y=None,dim_pic=None,
                          nin_nonlin=None, dim_nonlin=None,dimv=None):
     if nin is None:
         nin = options['dim']
@@ -356,8 +362,8 @@ def param_init_variation(options, params, prefix='variation',
         dim_nonlin = dim
     if dimv is None:
         dimv = options['dimv']
-    if dimpi is None:
-        dimpic = options['dim_pic']
+    if dim_pic is None:
+        dim_pic = options['dim_pic']
 
     W_pri = norm_weight(dimctx,dimv)
     params[_p(prefix, 'W_pri')] = W_pri
@@ -371,7 +377,7 @@ def param_init_variation(options, params, prefix='variation',
     params[_p(prefix, 'W_pri_sigma')] = W_pri_sigma
     params[_p(prefix, 'W_pri_sigma_b')] = numpy.zeros((dimv,)).astype('float32')
 
-    W_post = numpy.concatenate([norm_weight(dimctx,dimv),norm_weight(dimctx_y,dimv),norm_weight(dimpic,dimv)], axis = 0)
+    W_post = numpy.concatenate([norm_weight(dimctx,dimv),norm_weight(dimctx_y,dimv),norm_weight(dim_pic,dimv)], axis = 0)
     params[_p(prefix, 'W_post')] = W_post
     params[_p(prefix, 'W_post_b')] = numpy.zeros((dimv,)).astype('float32')
     
@@ -391,9 +397,10 @@ def variation_layer(tparams, ctx_means, options, prefix='variation', ctx_y_means
     
     if training:
         assert ctx_y_means
+        assert pic
     else:
         assert not ctx_y_means
-
+        assert not pic
     nsteps = ctx_means.shape[0]
 
     # prepare h_z' for both posterior and prior
@@ -412,7 +419,7 @@ def variation_layer(tparams, ctx_means, options, prefix='variation', ctx_y_means
     
     #Compute the KL objective
     kl_cost = 0
-    epsilon = np.finfo(np.float32).eps
+    epsilon = numpy.finfo(numpy.float32).eps
     if training:
         kl = (pri_log_sigma - post_log_sigma) + ((post_sigma**2) + ((post_mu - pri_mu)**2)) / (epsilon + 2 * pri_sigma**2) - 0.5
         kl_cost = tensor.sum(kl)
@@ -425,7 +432,7 @@ def variation_layer(tparams, ctx_means, options, prefix='variation', ctx_y_means
             result = mu + tensor.dot(SIGMA, noise)
             return result
     trng = RandomStreams(1234)
-    normal_noise = trng.normal((128,dimv))
+    normal_noise = trng.normal((nsteps,dimv))
     if training:
         seqs = [post_mu, post_sigma, normal_noise]
     else:
@@ -649,7 +656,7 @@ def gru_cond_layer(tparams, state_below, options, prefix='gru',
                                     strict=True)
     return rval
 
-c
+
 # initialize all parameters
 def init_params(options):
     params = OrderedDict()
@@ -706,7 +713,7 @@ def init_params(options):
 
 
 # build a training model
-def build_model(tparams, options):
+def build_model(tparams, options, training=True):
     opt_ret = dict()
 
     trng = RandomStreams(1234)
@@ -774,7 +781,7 @@ def build_model(tparams, options):
     
     #variation
 
-    sample_z,kl_cost = get_layer('variation')[1](tparams, ctx_mean,options,prefix='variation',ctx_y_means=ctx_y_mean,training=True)
+    sample_z,kl_cost = get_layer('variation')[1](tparams, ctx_mean,options,prefix='variation',ctx_y_means=ctx_y_mean,pic=pic,training=training)
     
     # initial decoder state
     init_state = get_layer('ff')[1](tparams, ctx_mean, options,
@@ -832,7 +839,7 @@ def build_model(tparams, options):
     cost = cost.reshape([y.shape[0], y.shape[1]])
     cost = (cost * y_mask).sum(0)
 
-    return trng, use_noise, x, x_mask, y, y_mask, opt_ret, cost, kl_cost
+    return trng, use_noise, x, x_mask, y, y_mask, pi, opt_ret, cost, kl_cost
  
 
 # build a sampler
@@ -1024,10 +1031,10 @@ def pred_probs(f_log_probs, prepare_data, options, iterator, verbose=True):
 
     n_done = 0
 
-    for x, y in iterator:
+    for x, y, pi in iterator:
         n_done += len(x)
 
-        x, x_mask, y, y_mask = prepare_data(x, y,
+        x, x_mask, y, y_mask, pi = prepare_data(x, y,
                                             n_words_src=options['n_words_src'],
                                             n_words=options['n_words'])
 
@@ -1160,6 +1167,8 @@ def sgd(lr, tparams, grads, x, mask, y, cost):
 def train(dim_word=100,  # word vector dimensionality
           dim=1000,  # the number of LSTM units
           dimv=100,
+          dim_pi=4096,
+          dim_pic=256,
           encoder='gru',
           decoder='gru_cond',
           patience=10,  # early stopping patience
@@ -1173,7 +1182,7 @@ def train(dim_word=100,  # word vector dimensionality
           n_words_src=100000,  # source vocabulary size
           n_words=100000,  # target vocabulary size
           maxlen=100,  # maximum length of the description
-          optimizer='rmsprop',
+          optimizer='adadelta',
           batch_size=16,
           valid_batch_size=16,
           saveto='model.npz',
@@ -1212,12 +1221,12 @@ def train(dim_word=100,  # word vector dimensionality
             model_options = pkl.load(f)
 
     print 'Loading data'
-    train = TextIterator(datasets[0], datasets[1],
+    train = TextIterator(datasets[0], datasets[1], datasets[2],
                          dictionaries[0], dictionaries[1],
                          n_words_source=n_words_src, n_words_target=n_words,
                          batch_size=batch_size,
                          maxlen=maxlen)
-    valid = TextIterator(valid_datasets[0], valid_datasets[1],
+    valid = TextIterator(valid_datasets[0], valid_datasets[1], valid_datasets[2],
                          dictionaries[0], dictionaries[1],
                          n_words_source=n_words_src, n_words_target=n_words,
                          batch_size=valid_batch_size,
@@ -1233,11 +1242,11 @@ def train(dim_word=100,  # word vector dimensionality
     tparams = init_tparams(params)
 
     trng, use_noise, \
-        x, x_mask, y, y_mask, \
+        x, x_mask, y, y_mask, pi,\
         opt_ret, \
         cost, kl_cost = \
         build_model(tparams, model_options)
-    inps = [x, x_mask, y, y_mask]
+    inps = [x, x_mask, y, y_mask, pi]
 
     print 'Building sampler'
     f_init, f_next = build_sampler(tparams, model_options, trng, use_noise)
@@ -1318,12 +1327,12 @@ def train(dim_word=100,  # word vector dimensionality
     for eidx in xrange(max_epochs):
         n_samples = 0
 
-        for x, y in train:
+        for x, y, pi in train:
             n_samples += len(x)
             uidx += 1
             use_noise.set_value(1.)
 
-            x, x_mask, y, y_mask = prepare_data(x, y, maxlen=maxlen,
+            x, x_mask, y, y_mask, pi = prepare_data(x, y, images=pi, maxlen=maxlen,
                                                 n_words_src=n_words_src,
                                                 n_words=n_words)
 
@@ -1335,7 +1344,7 @@ def train(dim_word=100,  # word vector dimensionality
             ud_start = time.time()
 
             # compute cost, grads and copy grads to shared variables
-            cost = f_grad_shared(x, x_mask, y, y_mask)
+            cost = f_grad_shared(x, x_mask, y, y_mask, pi)
 
             # do the update on parameters
             f_update(lrate)

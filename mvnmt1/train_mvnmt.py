@@ -1,6 +1,8 @@
 import numpy
 import os
+
 print "This is MVNMT type 1"
+
 from mvnmt import train
 
 
@@ -25,7 +27,7 @@ def main(job_id, params):
                      valid_batch_size=128,
                      datasets=['%s/flickr30k/bitext.train.en.tok.txt' % basedir,
                                '%s/flickr30k/bitext.train.de.tok.txt' % basedir,
-                               '%s_flickr30k/fc7.train.npy' % basedir],
+                               '%s/flickr30k/fc7.train.npy' % basedir],
                      valid_datasets=['%s/flickr30k/bitext.val.en.tok.txt' % basedir,
                                      '%s/flickr30k/bitext.val.de.tok.txt' % basedir,
                                      '%s/flickr30k/fc7.val.npy' % basedir],

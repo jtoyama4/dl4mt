@@ -1,6 +1,6 @@
 import cPickle as pkl
 import gzip
-
+import numpy
 
 def fopen(filename, mode='r'):
     if filename.endswith('.gz'):
@@ -10,7 +10,7 @@ def fopen(filename, mode='r'):
 
 class TextIterator:
     """Simple Bitext iterator."""
-    def __init__(self, source, target,
+    def __init__(self, source, target,image,
                  source_dict, target_dict,
                  batch_size=128,
                  maxlen=100,
@@ -18,6 +18,7 @@ class TextIterator:
                  n_words_target=-1):
         self.source = fopen(source, 'r')
         self.target = fopen(target, 'r')
+        self.image = numpy.load(image)
         with open(source_dict, 'rb') as f:
             self.source_dict = pkl.load(f)
         with open(target_dict, 'rb') as f:
@@ -30,6 +31,8 @@ class TextIterator:
         self.n_words_target = n_words_target
 
         self.end_of_data = False
+        
+        self.count = 0
 
     def __iter__(self):
         return self
@@ -37,6 +40,7 @@ class TextIterator:
     def reset(self):
         self.source.seek(0)
         self.target.seek(0)
+        self.count = 0
 
     def next(self):
         if self.end_of_data:
@@ -46,9 +50,9 @@ class TextIterator:
 
         source = []
         target = []
+        image = []
 
         try:
-
             # actual work here
             while True:
 
@@ -73,10 +77,14 @@ class TextIterator:
                     tt = [w if w < self.n_words_target else 1 for w in tt]
 
                 if len(ss) > self.maxlen and len(tt) > self.maxlen:
+                    self.count += 1
                     continue
-
+                
                 source.append(ss)
                 target.append(tt)
+                image.append(self.image[self.count])
+
+                self.count += 1
 
                 if len(source) >= self.batch_size or \
                         len(target) >= self.batch_size:
@@ -89,4 +97,4 @@ class TextIterator:
             self.reset()
             raise StopIteration
 
-        return source, target
+        return source, target, image
