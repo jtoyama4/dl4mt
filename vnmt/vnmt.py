@@ -744,12 +744,10 @@ def build_model(tparams, options):
     # ctx_mean = concatenate([proj[0][-1], projr[0][-1]], axis=proj[0].ndim-2)
     
     #variation
-    """if training:
-        sample_z,kl_cost = get_layer('variation')[1](tparams, ctx_mean,options,prefix='variation',ctx_y_means=ctx_y_mean,training=True)
-    else:
-        sample_z,cost = get_layer('variation')[1](tparams, ctx_mean,options,prefix='variation',training=False)
-    """
-    sample_z,kl_cost = get_layer('variation')[1](tparams, ctx_mean,options,prefix='variation',ctx_y_means=ctx_y_mean,training=True)
+    if not training:
+        ctx_y_mean = None
+
+    sample_z,kl_cost = get_layer('variation')[1](tparams, ctx_mean,options,prefix='variation',ctx_y_means=ctx_y_mean,training=training)
     
     # initial decoder state
     init_state = get_layer('ff')[1](tparams, ctx_mean, options,
@@ -807,6 +805,8 @@ def build_model(tparams, options):
     cost = cost.reshape([y.shape[0], y.shape[1]])
     cost = (cost * y_mask).sum(0)
 
+    if not training:
+        return trng, use_noise, x, x_mask, y, y_mask, opt_ret, cost
     return trng, use_noise, x, x_mask, y, y_mask, opt_ret, cost, kl_cost
  
 
@@ -1148,7 +1148,7 @@ def train(dim_word=100,  # word vector dimensionality
           n_words_src=100000,  # source vocabulary size
           n_words=100000,  # target vocabulary size
           maxlen=100,  # maximum length of the description
-          optimizer='rmsprop',
+          optimizer='adadelta',
           batch_size=16,
           valid_batch_size=16,
           saveto='model.npz',
@@ -1213,6 +1213,14 @@ def train(dim_word=100,  # word vector dimensionality
         cost, kl_cost = \
         build_model(tparams, model_options)
     inps = [x, x_mask, y, y_mask]
+    
+    val_trng, val_use_noise, \
+        val_x, val_x_mask, val_y, val_y_mask,\
+        val_opt_ret, \
+        val_cost = \
+        build_model(tparams, model_options,training=False)
+    val_inps = [val_x, val_x_mask, val_y, val_y_mask]
+
 
     print 'Building sampler'
     f_init, f_next = build_sampler(tparams, model_options, trng, use_noise)
@@ -1221,6 +1229,10 @@ def train(dim_word=100,  # word vector dimensionality
     print 'Building f_log_probs...',
     f_log_probs = theano.function(inps, cost, profile=profile)
     print 'Done'
+
+    #f_log_probs for validation
+    print 'Bulding f_log_probs for validation...'
+    val_f_log_probs = theano.function(val_inps, val_cost, profile=profile)
 
     cost = cost.mean()
     
@@ -1395,8 +1407,8 @@ def train(dim_word=100,  # word vector dimensionality
 
             # validate model on validation set and early stop if necessary
             if numpy.mod(uidx, validFreq) == 0:
-                use_noise.set_value(0.)
-                valid_errs = pred_probs(f_log_probs, prepare_data,
+                val_use_noise.set_value(0.)
+                valid_errs = pred_probs(val_f_log_probs, prepare_data,
                                         model_options, valid)
                 valid_err = valid_errs.mean()
                 history_errs.append(valid_err)
@@ -1432,7 +1444,7 @@ def train(dim_word=100,  # word vector dimensionality
         zipp(best_p, tparams)
 
     use_noise.set_value(0.)
-    valid_err = pred_probs(f_log_probs, prepare_data,
+    valid_err = pred_probs(val_f_log_probs, prepare_data,
                            model_options, valid).mean()
 
     print 'Valid ', valid_err

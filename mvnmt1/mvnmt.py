@@ -1482,8 +1482,8 @@ def train(dim_word=100,  # word vector dimensionality
     if best_p is not None:
         zipp(best_p, tparams)
 
-    use_noise.set_value(0.)
-    valid_err = pred_probs(f_log_probs, prepare_data,
+    val_use_noise.set_value(0.)
+    valid_err = pred_probs(val_f_log_probs, prepare_data,
                            model_options, valid).mean()
 
     print 'Valid ', valid_err
