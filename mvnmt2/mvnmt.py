@@ -1096,7 +1096,7 @@ def adam(lr, tparams, grads, inp, cost, beta1=0.9, beta2=0.999, e=1e-8):
     return f_grad_shared, f_update
 
 
-def adadelta(lr, tparams, grads, inp, cost):
+def adadelta(lr, tparams, grads, inp, cost, kl_cost):
     zipped_grads = [theano.shared(p.get_value() * numpy.float32(0.),
                                   name='%s_grad' % k)
                     for k, p in tparams.iteritems()]
@@ -1111,7 +1111,7 @@ def adadelta(lr, tparams, grads, inp, cost):
     rg2up = [(rg2, 0.95 * rg2 + 0.05 * (g ** 2))
              for rg2, g in zip(running_grads2, grads)]
 
-    f_grad_shared = theano.function(inp, cost, updates=zgup+rg2up,
+    f_grad_shared = theano.function(inp, [cost, kl_cost], updates=zgup+rg2up,
                                     profile=profile)
 
     updir = [-tensor.sqrt(ru2 + 1e-6) / tensor.sqrt(rg2 + 1e-6) * zg
@@ -1209,6 +1209,8 @@ def train(dim_word=100,  # word vector dimensionality
               '/data/lisatmp3/chokyun/europarl/europarl-v7.fr-en.en.tok.pkl',
               '/data/lisatmp3/chokyun/europarl/europarl-v7.fr-en.fr.tok.pkl'],
           use_dropout=False,
+          fine_tuning=False,
+          fine_tuning_load="",
           reload_=False,
           overwrite=False):
 
@@ -1231,6 +1233,14 @@ def train(dim_word=100,  # word vector dimensionality
         with open('%s.pkl' % saveto, 'rb') as f:
             model_options = pkl.load(f)
 
+    if fine_tuning and os.path.exists(fine_tuning_load):
+        print 'Reloading model options'
+        with open('%s.pkl' % fine_tuning_load, 'rb') as f:
+            model_options = pkl.load(f)
+            model_options["dimv"] = dimv
+            model_options["dim_pi"] = dim_pi
+            model_options["dim_pic"] = dim_pic
+
     print 'Loading data'
     train = TextIterator(datasets[0], datasets[1], datasets[2],
                          dictionaries[0], dictionaries[1],
@@ -1249,6 +1259,10 @@ def train(dim_word=100,  # word vector dimensionality
     if reload_ and os.path.exists(saveto):
         print 'Reloading model parameters'
         params = load_params(saveto, params)
+
+    if fine_tuning and os.path.exists(fine_tuning_load):
+        print 'Reloading model parameters'
+        params = load_params(fine_tuning_load, params)
 
     tparams = init_tparams(params)
 
@@ -1322,7 +1336,7 @@ def train(dim_word=100,  # word vector dimensionality
     # compile the optimizer, the actual computational graph is compiled here
     lr = tensor.scalar(name='lr')
     print 'Building optimizers...',
-    f_grad_shared, f_update = eval(optimizer)(lr, tparams, grads, inps, cost)
+    f_grad_shared, f_update = eval(optimizer)(lr, tparams, grads, inps, cost, kl_cost)
     print 'Done'
 
     print 'Optimization'
@@ -1366,7 +1380,7 @@ def train(dim_word=100,  # word vector dimensionality
             ud_start = time.time()
 
             # compute cost, grads and copy grads to shared variables
-            cost = f_grad_shared(x, x_mask, y, y_mask, pi)
+            cost, kl_cost = f_grad_shared(x, x_mask, y, y_mask, pi)
 
             # do the update on parameters
             f_update(lrate)
@@ -1381,7 +1395,7 @@ def train(dim_word=100,  # word vector dimensionality
 
             # verbose
             if numpy.mod(uidx, dispFreq) == 0:
-                print 'Epoch ', eidx, 'Update ', uidx, 'Cost ', cost, 'UD ', ud
+                print 'Epoch ', eidx, 'Update ', uidx, 'Cost ', cost, 'UD ', ud, 'kl_cost ', kl_cost
 
             # save the best model so far, in addition, save the latest model
             # into a separate file with the iteration number for external eval

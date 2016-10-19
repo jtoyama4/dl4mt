@@ -1,7 +1,8 @@
 import numpy
 import os
+import argparse
 
-print "This is MVNMT type 2"
+print "This is MVNMT"
 
 from mvnmt import train
 
@@ -11,6 +12,8 @@ def main(job_id, params):
     basedir = '/home/ubuntu/dl4mt-tutorial'
     validerr = train(saveto=params['model'][0],
                      reload_=params['reload'][0],
+                     fine_tuning=params['fine_tuning'][0],
+                     fine_tuning_load=params['fine_tuning_load'][0],
                      dim_word=params['dim_word'][0],
                      dim=params['dim'][0],
                      dimv=params['dimv'][0],
@@ -43,8 +46,15 @@ def main(job_id, params):
 
 if __name__ == '__main__':
     basedir = '/home/ubuntu/dl4mt-tutorial'
+
+    parser = argparse.ArgumentParser(description='')
+    parser.add_argument('--load',action='store_true',default=False)
+    parser.add_argument('--fine_tuning', action='store_true', default=False)
+    args = parser.parse_args()
+
     main(0, {
-        'model': ['%s/models/model_flickr30k.npz' % basedir],
+        'model': ['%s/models/mvnmt/model_mvnmt.npz' % basedir],
+        'fine_tuning_load':['%s/models/vnmt/model_nmt.npz' % basedir],
         'dim_word': [256],
         'dim': [256],
         'dimv': [100],
@@ -58,4 +68,5 @@ if __name__ == '__main__':
         'use-dropout': [False],
         #'learning-rate': [0.0001],
         'learning-rate': [1.0],
-        'reload': [False]})
+        'reload': [args.load],
+        'fine_tuning': [args.fine_tuning]})

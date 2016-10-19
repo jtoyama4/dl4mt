@@ -2,9 +2,9 @@ import numpy
 import os
 import argparse
 
-print "This is VNMT"
+print "This is MVNMT"
 
-from vnmt import train
+from mvnmt import train
 
 
 def main(job_id, params):
@@ -53,8 +53,8 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     main(0, {
-        'model': ['%s/models/vnmt/model_vnmt.npz' % basedir],
-        'fine_tuning_load':['%s/models/nmt/model_nmt.npz' % basedir],
+        'model': ['%s/models/mvnmt/model_vnmt.npz' % basedir],
+        'fine_tuning_load':['%s/models/vnmt/model_nmt.npz' % basedir],
         'dim_word': [256],
         'dim': [256],
         'dimv': [100],
