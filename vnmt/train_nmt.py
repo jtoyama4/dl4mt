@@ -39,8 +39,13 @@ def main(job_id, params):
 
 if __name__ == '__main__':
     basedir = '/home/ubuntu/dl4mt-tutorial'
+    parser = argparse.ArgumentParser(description='')
+    parser.add_argument('--load',action='store_true',default=False)
+    parser.add_argument('--fine_tuning', action='store_true', deafult=False)
+    args = parser.parse_args()
+
     main(0, {
-        'model': ['%s/models/model_flickr30k.npz' % basedir],
+        'model': ['%s/models/nmt/model_nmt.npz' % basedir],
         'dim_word': [256],
         'dim': [256],
         'dimv': [100],
@@ -52,4 +57,4 @@ if __name__ == '__main__':
         'use-dropout': [False],
         #'learning-rate': [0.0001],
         'learning-rate': [1.0],
-        'reload': [False]})
+        'reload': [args.load]})

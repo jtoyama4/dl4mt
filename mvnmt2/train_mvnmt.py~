@@ -1,10 +1,9 @@
 import numpy
 import os
-import argparse
 
-print "This is VNMT"
+print "This is MVNMT type 2"
 
-from vnmt import train
+from mvnmt import train
 
 
 def main(job_id, params):
@@ -12,8 +11,6 @@ def main(job_id, params):
     basedir = '/home/ubuntu/dl4mt-tutorial'
     validerr = train(saveto=params['model'][0],
                      reload_=params['reload'][0],
-                     fine_tuning=params['fine_tuning'][0],
-                     fine_tuning_load=params['fine_tuning_load'][0],
                      dim_word=params['dim_word'][0],
                      dim=params['dim'][0],
                      dimv=params['dimv'][0],
@@ -36,7 +33,7 @@ def main(job_id, params):
                                      '%s/flickr30k/fc7.val.npy' % basedir],
                      dictionaries=['%s/flickr30k/bitext.train.en.tok.txt.pkl' % basedir,
                                    '%s/flickr30k/bitext.train.de.tok.txt.pkl' % basedir],
-                     validFreq=1000,
+                     validFreq=10,
                      dispFreq=1,
                      saveFreq=1000,
                      sampleFreq=50,
@@ -46,15 +43,8 @@ def main(job_id, params):
 
 if __name__ == '__main__':
     basedir = '/home/ubuntu/dl4mt-tutorial'
-
-    parser = argparse.ArgumentParser(description='')
-    parser.add_argument('--load',action='store_true',default=False)
-    parser.add_argument('--fine_tuning', action='store_true', default=False)
-    args = parser.parse_args()
-
     main(0, {
-        'model': ['%s/models/vnmt/model_vnmt.npz' % basedir],
-        'fine_tuning_load':['%s/models/nmt/model_nmt.npz' % basedir],
+        'model': ['%s/models/model_flickr30k.npz' % basedir],
         'dim_word': [256],
         'dim': [256],
         'dimv': [100],
@@ -68,5 +58,4 @@ if __name__ == '__main__':
         'use-dropout': [False],
         #'learning-rate': [0.0001],
         'learning-rate': [1.0],
-        'reload': [args.load],
-        'fine_tuning': [args.fine_tuning]})
+        'reload': [False]})

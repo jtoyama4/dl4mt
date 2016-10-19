@@ -159,27 +159,33 @@ def concatenate(tensor_list, axis=0):
 
 
 # batch preparation
-def prepare_data(seqs_x, seqs_y, maxlen=None, n_words_src=30000,
+def prepare_data(seqs_x, seqs_y, images=None, maxlen=None, n_words_src=30000,
                  n_words=30000):
     # x: a list of sentences
     lengths_x = [len(s) for s in seqs_x]
     lengths_y = [len(s) for s in seqs_y]
+    if not images:
+        images = [0 for s in seqs_x]
 
     if maxlen is not None:
         new_seqs_x = []
         new_seqs_y = []
         new_lengths_x = []
         new_lengths_y = []
-        for l_x, s_x, l_y, s_y in zip(lengths_x, seqs_x, lengths_y, seqs_y):
+        new_images = []
+
+        for l_x, s_x, l_y, s_y, p in zip(lengths_x, seqs_x, lengths_y, seqs_y, images):
             if l_x < maxlen and l_y < maxlen:
                 new_seqs_x.append(s_x)
                 new_lengths_x.append(l_x)
                 new_seqs_y.append(s_y)
                 new_lengths_y.append(l_y)
+                new_images.append(p)
         lengths_x = new_lengths_x
         seqs_x = new_seqs_x
         lengths_y = new_lengths_y
         seqs_y = new_seqs_y
+        images = new_images
 
         if len(lengths_x) < 1 or len(lengths_y) < 1:
             return None, None, None, None
@@ -198,7 +204,7 @@ def prepare_data(seqs_x, seqs_y, maxlen=None, n_words_src=30000,
         y[:lengths_y[idx], idx] = s_y
         y_mask[:lengths_y[idx]+1, idx] = 1.
 
-    return x, x_mask, y, y_mask
+    return x, x_mask, y, y_mask, images
 
 
 # feedforward layer: affine transformation + point-wise nonlinearity
@@ -340,7 +346,7 @@ def gru_layer(tparams, state_below, options, prefix='gru', mask=None,
 
 
 def param_init_variation(options, params, prefix='variation',
-                         nin=None, dim=None, dimctx=None,dimctx_y=None,
+                         nin=None, dim=None, dimctx=None,dimctx_y=None,dim_pic=None,
                          nin_nonlin=None, dim_nonlin=None,dimv=None):
     if nin is None:
         nin = options['dim']
@@ -356,10 +362,10 @@ def param_init_variation(options, params, prefix='variation',
         dim_nonlin = dim
     if dimv is None:
         dimv = options['dimv']
-    if dimpi is None:
-        dimpic = options['dim_pic']
+    if dim_pic is None:
+        dim_pic = options['dim_pic']
 
-    W_pri = norm_weight(dimctx,dimv)
+    W_pri = numpy.concatenate([norm_weight(dimctx,dimv), norm_weight(dim_pic,dimv)], axis=0)
     params[_p(prefix, 'W_pri')] = W_pri
     params[_p(prefix, 'W_pri_b')] = numpy.zeros((dimv,)).astype('float32')
     
@@ -371,7 +377,7 @@ def param_init_variation(options, params, prefix='variation',
     params[_p(prefix, 'W_pri_sigma')] = W_pri_sigma
     params[_p(prefix, 'W_pri_sigma_b')] = numpy.zeros((dimv,)).astype('float32')
 
-    W_post = numpy.concatenate([norm_weight(dimctx,dimv),norm_weight(dimctx_y,dimv),norm_weight(dimpic,dimv)], axis = 0)
+    W_post = numpy.concatenate([norm_weight(dimctx,dimv),norm_weight(dimctx_y,dimv),norm_weight(dim_pic,dimv)], axis = 0)
     params[_p(prefix, 'W_post')] = W_post
     params[_p(prefix, 'W_post_b')] = numpy.zeros((dimv,)).astype('float32')
     
@@ -391,13 +397,15 @@ def variation_layer(tparams, ctx_means, options, prefix='variation', ctx_y_means
     
     if training:
         assert ctx_y_means
+        assert pic
     else:
         assert not ctx_y_means
+        assert pic
 
     nsteps = ctx_means.shape[0]
 
     # prepare h_z' for both posterior and prior
-    pri_h = tensor.tanh(tensor.dot(ctx_means, tparams[_p(prefix, 'W_pri')]) + tparams[_p(prefix, 'W_pri_b')])
+    pri_h = tensor.tanh(tensor.dot(concatenate([ctx_means, pic], axis=1), tparams[_p(prefix, 'W_pri')]) + tparams[_p(prefix, 'W_pri_b')])
     if training:
         post_h = tensor.tanh(tensor.dot(concatenate([ctx_means, ctx_y_means, pic],axis=1), tparams[_p(prefix, 'W_post')]) + tparams[_p(prefix, 'W_post_b')])
     
@@ -412,8 +420,9 @@ def variation_layer(tparams, ctx_means, options, prefix='variation', ctx_y_means
     
     #Compute the KL objective
     kl_cost = 0
+    epsilon = numpy.finfo(numpy.float32).eps
     if training:
-        kl = (pri_log_sigma - post_log_sigma) + ((post_sigma**2) + ((post_mu - pri_mu)**2)) / (2 * pri_sigma**2) - 0.5
+        kl = (pri_log_sigma - post_log_sigma) + ((post_sigma**2) + ((post_mu - pri_mu)**2)) / (epsilon + 2 * pri_sigma**2) - 0.5
         kl_cost = tensor.sum(kl)
 
     def _gaussian_noise_step(mu, sigma, noise, z, add_noise=True):
@@ -424,7 +433,7 @@ def variation_layer(tparams, ctx_means, options, prefix='variation', ctx_y_means
             result = mu + tensor.dot(SIGMA, noise)
             return result
     trng = RandomStreams(1234)
-    normal_noise = trng.normal((128,dimv))
+    normal_noise = trng.normal((nsteps,dimv))
     if training:
         seqs = [post_mu, post_sigma, normal_noise]
     else:
@@ -648,7 +657,7 @@ def gru_cond_layer(tparams, state_below, options, prefix='gru',
                                     strict=True)
     return rval
 
-c
+
 # initialize all parameters
 def init_params(options):
     params = OrderedDict()
@@ -705,7 +714,7 @@ def init_params(options):
 
 
 # build a training model
-def build_model(tparams, options):
+def build_model(tparams, options, training=True):
     opt_ret = dict()
 
     trng = RandomStreams(1234)
@@ -772,8 +781,10 @@ def build_model(tparams, options):
     # ctx_mean = concatenate([proj[0][-1], projr[0][-1]], axis=proj[0].ndim-2)
     
     #variation
+    if not training:
+        ctx_y_mean = None
 
-    sample_z,kl_cost = get_layer('variation')[1](tparams, ctx_mean,options,prefix='variation',ctx_y_means=ctx_y_mean,training=True)
+    sample_z,kl_cost = get_layer('variation')[1](tparams, ctx_mean,options,prefix='variation',ctx_y_means=ctx_y_mean,pic=pic,training=training)
     
     # initial decoder state
     init_state = get_layer('ff')[1](tparams, ctx_mean, options,
@@ -831,13 +842,18 @@ def build_model(tparams, options):
     cost = cost.reshape([y.shape[0], y.shape[1]])
     cost = (cost * y_mask).sum(0)
 
-    return trng, use_noise, x, x_mask, y, y_mask, opt_ret, cost, kl_cost
+    if not training:
+        return trng, use_noise, x, x_mask, y, y_mask, pi, opt_ret, cost
+
+    return trng, use_noise, x, x_mask, y, y_mask, pi, opt_ret, cost, kl_cost
  
 
 # build a sampler
 def build_sampler(tparams, options, trng, use_noise):
     x = tensor.matrix('x', dtype='int64')
     xr = x[::-1]
+    pi = tensor.matrix('pi', dtype='float32')
+
     n_timesteps = x.shape[0]
     n_samples = x.shape[1]
 
@@ -846,12 +862,15 @@ def build_sampler(tparams, options, trng, use_noise):
     emb = emb.reshape([n_timesteps, n_samples, options['dim_word']])
     embr = tparams['Wemb'][xr.flatten()]
     embr = embr.reshape([n_timesteps, n_samples, options['dim_word']])
-
+    
     # encoder
     proj = get_layer(options['encoder'])[1](tparams, emb, options,
                                             prefix='encoder')
     projr = get_layer(options['encoder'])[1](tparams, embr, options,
                                              prefix='encoder_r')
+
+    # image feature extraction
+    pic = get_layer('image')[1](tparams, pi, options, prefix='image')
 
     # concatenate forward and backward rnn hidden states
     ctx = concatenate([proj[0], projr[0][::-1]], axis=proj[0].ndim-1)
@@ -871,7 +890,7 @@ def build_sampler(tparams, options, trng, use_noise):
     y = tensor.vector('y_sampler', dtype='int64')
     init_state = tensor.matrix('init_state', dtype='float32')
     
-    sample_z,_ = get_layer('variation')[1](tparams, ctx_mean,options,prefix='variation',training=False)
+    sample_z,_ = get_layer('variation')[1](tparams, ctx_mean,options, pic=pic, prefix='variation', training=False)
     
     # if it's the first word, emb should be all zero and it is indicated by -1
     emb = tensor.switch(y[:, None] < 0,
@@ -911,7 +930,7 @@ def build_sampler(tparams, options, trng, use_noise):
     # compile a function to do the whole thing above, next word probability,
     # sampled word for the next target, next hidden state to be used
     print 'Building f_next..',
-    inps = [y, ctx, init_state]
+    inps = [y, ctx, pi, init_state]
     outs = [next_probs, next_sample, next_state]
     f_next = theano.function(inps, outs, name='f_next', profile=profile)
     print 'Done'
@@ -1023,14 +1042,14 @@ def pred_probs(f_log_probs, prepare_data, options, iterator, verbose=True):
 
     n_done = 0
 
-    for x, y in iterator:
+    for x, y, pi in iterator:
         n_done += len(x)
 
-        x, x_mask, y, y_mask = prepare_data(x, y,
+        x, x_mask, y, y_mask, pi = prepare_data(x, y, images = pi,
                                             n_words_src=options['n_words_src'],
                                             n_words=options['n_words'])
 
-        pprobs = f_log_probs(x, x_mask, y, y_mask)
+        pprobs = f_log_probs(x, x_mask, y, y_mask, pi)
         for pp in pprobs:
             probs.append(pp)
 
@@ -1159,6 +1178,8 @@ def sgd(lr, tparams, grads, x, mask, y, cost):
 def train(dim_word=100,  # word vector dimensionality
           dim=1000,  # the number of LSTM units
           dimv=100,
+          dim_pi=4096,
+          dim_pic=256,
           encoder='gru',
           decoder='gru_cond',
           patience=10,  # early stopping patience
@@ -1172,7 +1193,7 @@ def train(dim_word=100,  # word vector dimensionality
           n_words_src=100000,  # source vocabulary size
           n_words=100000,  # target vocabulary size
           maxlen=100,  # maximum length of the description
-          optimizer='rmsprop',
+          optimizer='adadelta',
           batch_size=16,
           valid_batch_size=16,
           saveto='model.npz',
@@ -1211,12 +1232,12 @@ def train(dim_word=100,  # word vector dimensionality
             model_options = pkl.load(f)
 
     print 'Loading data'
-    train = TextIterator(datasets[0], datasets[1],
+    train = TextIterator(datasets[0], datasets[1], datasets[2],
                          dictionaries[0], dictionaries[1],
                          n_words_source=n_words_src, n_words_target=n_words,
                          batch_size=batch_size,
                          maxlen=maxlen)
-    valid = TextIterator(valid_datasets[0], valid_datasets[1],
+    valid = TextIterator(valid_datasets[0], valid_datasets[1], valid_datasets[2],
                          dictionaries[0], dictionaries[1],
                          n_words_source=n_words_src, n_words_target=n_words,
                          batch_size=valid_batch_size,
@@ -1232,11 +1253,18 @@ def train(dim_word=100,  # word vector dimensionality
     tparams = init_tparams(params)
 
     trng, use_noise, \
-        x, x_mask, y, y_mask, \
+        x, x_mask, y, y_mask, pi,\
         opt_ret, \
         cost, kl_cost = \
         build_model(tparams, model_options)
-    inps = [x, x_mask, y, y_mask]
+    inps = [x, x_mask, y, y_mask, pi]
+
+    val_trng, val_use_noise, \
+        val_x, val_x_mask, val_y, val_y_mask, val_pi,\
+        val_opt_ret, \
+        val_cost = \
+        build_model(tparams, model_options,training=False)
+    val_inps = [val_x, val_x_mask, val_y, val_y_mask, val_pi]
 
     print 'Building sampler'
     f_init, f_next = build_sampler(tparams, model_options, trng, use_noise)
@@ -1245,7 +1273,11 @@ def train(dim_word=100,  # word vector dimensionality
     print 'Building f_log_probs...',
     f_log_probs = theano.function(inps, cost, profile=profile)
     print 'Done'
-
+    
+    #f_log_probs for validation
+    print 'BUilding f_log_probs for validation...',
+    val_f_log_probs = theano.function(val_inps, val_cost, profile=profile)
+    
     cost = cost.mean()
     
     cost += kl_cost
@@ -1317,12 +1349,12 @@ def train(dim_word=100,  # word vector dimensionality
     for eidx in xrange(max_epochs):
         n_samples = 0
 
-        for x, y in train:
+        for x, y, pi in train:
             n_samples += len(x)
             uidx += 1
             use_noise.set_value(1.)
 
-            x, x_mask, y, y_mask = prepare_data(x, y, maxlen=maxlen,
+            x, x_mask, y, y_mask, pi = prepare_data(x, y, images=pi, maxlen=maxlen,
                                                 n_words_src=n_words_src,
                                                 n_words=n_words)
 
@@ -1334,7 +1366,7 @@ def train(dim_word=100,  # word vector dimensionality
             ud_start = time.time()
 
             # compute cost, grads and copy grads to shared variables
-            cost = f_grad_shared(x, x_mask, y, y_mask)
+            cost = f_grad_shared(x, x_mask, y, y_mask, pi)
 
             # do the update on parameters
             f_update(lrate)
@@ -1419,8 +1451,8 @@ def train(dim_word=100,  # word vector dimensionality
 
             # validate model on validation set and early stop if necessary
             if numpy.mod(uidx, validFreq) == 0:
-                use_noise.set_value(0.)
-                valid_errs = pred_probs(f_log_probs, prepare_data,
+                val_use_noise.set_value(0.)
+                valid_errs = pred_probs(val_f_log_probs, prepare_data,
                                         model_options, valid)
                 valid_err = valid_errs.mean()
                 history_errs.append(valid_err)
@@ -1455,8 +1487,8 @@ def train(dim_word=100,  # word vector dimensionality
     if best_p is not None:
         zipp(best_p, tparams)
 
-    use_noise.set_value(0.)
-    valid_err = pred_probs(f_log_probs, prepare_data,
+    val_use_noise.set_value(0.)
+    valid_err = pred_probs(val_f_log_probs, prepare_data,
                            model_options, valid).mean()
 
     print 'Valid ', valid_err

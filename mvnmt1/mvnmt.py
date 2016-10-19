@@ -419,7 +419,7 @@ def variation_layer(tparams, ctx_means, options, prefix='variation', ctx_y_means
     
     #Compute the KL objective
     kl_cost = 0
-    epsilon = numpy.finfo(numpy.float32).eps
+    epsilon = 0.00001
     if training:
         kl = (pri_log_sigma - post_log_sigma) + ((post_sigma**2) + ((post_mu - pri_mu)**2)) / (epsilon + 2 * pri_sigma**2) - 0.5
         kl_cost = tensor.sum(kl)
@@ -574,6 +574,7 @@ def gru_cond_layer(tparams, state_below, options, prefix='gru',
                     U_nl, Ux_nl, b_nl, bx_nl):
         preact1 = tensor.dot(h_, U)
         preact1 += x_
+        preact1 += tensor.dot(he, Vc)
         preact1 = tensor.nnet.sigmoid(preact1)
 
         r1 = _slice(preact1, 0, dim)
@@ -582,6 +583,7 @@ def gru_cond_layer(tparams, state_below, options, prefix='gru',
         preactx1 = tensor.dot(h_, Ux)
         preactx1 *= r1
         preactx1 += xx_
+        preactx1 += tensor.dot(he, Vcx)
 
         h1 = tensor.tanh(preactx1)
 
@@ -603,7 +605,7 @@ def gru_cond_layer(tparams, state_below, options, prefix='gru',
 
         preact2 = tensor.dot(h1, U_nl)+b_nl
         preact2 += tensor.dot(ctx_, Wc)
-        preact2 += tensor.dot(he, Vc)
+        #preact2 += tensor.dot(he, Vc)
         preact2 = tensor.nnet.sigmoid(preact2)
 
         r2 = _slice(preact2, 0, dim)
@@ -612,7 +614,7 @@ def gru_cond_layer(tparams, state_below, options, prefix='gru',
         preactx2 = tensor.dot(h1, Ux_nl)+bx_nl
         preactx2 *= r2
         preactx2 += tensor.dot(ctx_, Wcx)
-        preactx2 += tensor.dot(he, Vcx)
+        #preactx2 += tensor.dot(he, Vcx)
         h2 = tensor.tanh(preactx2)
 
         h2 = u2 * h1 + (1. - u2) * h2
