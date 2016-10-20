@@ -188,7 +188,7 @@ def prepare_data(seqs_x, seqs_y, images=None, maxlen=None, n_words_src=30000,
         images = new_images
 
         if len(lengths_x) < 1 or len(lengths_y) < 1:
-            return None, None, None, None, None
+            return None, None, None, None
 
     n_samples = len(seqs_x)
     maxlen_x = numpy.max(lengths_x) + 1
@@ -365,9 +365,9 @@ def param_init_variation(options, params, prefix='variation',
     if dim_pic is None:
         dim_pic = options['dim_pic']
 
-    W_pri_pi = numpy.concatenate([norm_weight(dimctx,dimv), norm_weight(dim_pic,dimv)], axis=0)
-    params[_p(prefix, 'W_pri_pi')] = W_pri_pi
-    params[_p(prefix, 'W_pri_pi_b')] = numpy.zeros((dimv,)).astype('float32')
+    W_pri = norm_weight(dimctx,dimv)
+    params[_p(prefix, 'W_pri')] = W_pri
+    params[_p(prefix, 'W_pri_b')] = numpy.zeros((dimv,)).astype('float32')
     
     W_pri_mu = norm_weight(dimv,dimv)
     params[_p(prefix, 'W_pri_mu')] = W_pri_mu
@@ -400,12 +400,11 @@ def variation_layer(tparams, ctx_means, options, prefix='variation', ctx_y_means
         assert pic
     else:
         assert not ctx_y_means
-        assert pic
-
+        assert not pic
     nsteps = ctx_means.shape[0]
 
     # prepare h_z' for both posterior and prior
-    pri_h = tensor.tanh(tensor.dot(concatenate([ctx_means, pic], axis=1), tparams[_p(prefix, 'W_pri_pi')]) + tparams[_p(prefix, 'W_pri_pi_b')])
+    pri_h = tensor.tanh(tensor.dot(ctx_means, tparams[_p(prefix, 'W_pri')]) + tparams[_p(prefix, 'W_pri_b')])
     if training:
         post_h = tensor.tanh(tensor.dot(concatenate([ctx_means, ctx_y_means, pic],axis=1), tparams[_p(prefix, 'W_post_pi')]) + tparams[_p(prefix, 'W_post_pi_b')])
     
@@ -420,9 +419,9 @@ def variation_layer(tparams, ctx_means, options, prefix='variation', ctx_y_means
     
     #Compute the KL objective
     kl_cost = 0
-    epsilon = numpy.finfo(numpy.float32).eps
+    epsilon = 0.00001
     if training:
-        kl = (pri_log_sigma - post_log_sigma) + ((post_sigma**2) + ((post_mu - pri_mu)**2)) / (epsilon + 2 * (pri_sigma**2)) - 0.5
+        kl = (pri_log_sigma - post_log_sigma) + ((post_sigma**2) + ((post_mu - pri_mu)**2)) / (epsilon + 2 * pri_sigma**2) - 0.5
         kl_cost = tensor.sum(kl)
 
     def _gaussian_noise_step(mu, sigma, noise, z, add_noise=True):
@@ -575,6 +574,7 @@ def gru_cond_layer(tparams, state_below, options, prefix='gru',
                     U_nl, Ux_nl, b_nl, bx_nl):
         preact1 = tensor.dot(h_, U)
         preact1 += x_
+        #preact1 += tensor.dot(he, Vc)
         preact1 = tensor.nnet.sigmoid(preact1)
 
         r1 = _slice(preact1, 0, dim)
@@ -582,7 +582,8 @@ def gru_cond_layer(tparams, state_below, options, prefix='gru',
 
         preactx1 = tensor.dot(h_, Ux)
         preactx1 *= r1
-        preactx1 += xx_
+        #preactx1 += xx_
+        preactx1 += tensor.dot(he, Vcx)
 
         h1 = tensor.tanh(preactx1)
 
@@ -783,6 +784,7 @@ def build_model(tparams, options, training=True):
     #variation
     if not training:
         ctx_y_mean = None
+        pic = None
 
     sample_z,kl_cost = get_layer('variation')[1](tparams, ctx_mean,options,prefix='variation',ctx_y_means=ctx_y_mean,pic=pic,training=training)
     
@@ -843,7 +845,7 @@ def build_model(tparams, options, training=True):
     cost = (cost * y_mask).sum(0)
 
     if not training:
-        return trng, use_noise, x, x_mask, y, y_mask, pi, opt_ret, cost
+        return trng, use_noise, x, x_mask, y, y_mask, opt_ret, cost
 
     return trng, use_noise, x, x_mask, y, y_mask, pi, opt_ret, cost, kl_cost
  
@@ -852,8 +854,6 @@ def build_model(tparams, options, training=True):
 def build_sampler(tparams, options, trng, use_noise):
     x = tensor.matrix('x', dtype='int64')
     xr = x[::-1]
-    pi = tensor.matrix('pi', dtype='float32')
-
     n_timesteps = x.shape[0]
     n_samples = x.shape[1]
 
@@ -862,15 +862,12 @@ def build_sampler(tparams, options, trng, use_noise):
     emb = emb.reshape([n_timesteps, n_samples, options['dim_word']])
     embr = tparams['Wemb'][xr.flatten()]
     embr = embr.reshape([n_timesteps, n_samples, options['dim_word']])
-    
+
     # encoder
     proj = get_layer(options['encoder'])[1](tparams, emb, options,
                                             prefix='encoder')
     projr = get_layer(options['encoder'])[1](tparams, embr, options,
                                              prefix='encoder_r')
-
-    # image feature extraction
-    pic = get_layer('image')[1](tparams, pi, options, prefix='image')
 
     # concatenate forward and backward rnn hidden states
     ctx = concatenate([proj[0], projr[0][::-1]], axis=proj[0].ndim-1)
@@ -882,15 +879,15 @@ def build_sampler(tparams, options, trng, use_noise):
                                     prefix='ff_state', activ='tanh')
 
     print 'Building f_init...',
-    outs = [init_state, ctx, pic]
-    f_init = theano.function([x,pi], outs, name='f_init', profile=profile)
+    outs = [init_state, ctx]
+    f_init = theano.function([x], outs, name='f_init', profile=profile)
     print 'Done'
 
     # x: 1 x 1
     y = tensor.vector('y_sampler', dtype='int64')
     init_state = tensor.matrix('init_state', dtype='float32')
     
-    sample_z,_ = get_layer('variation')[1](tparams, ctx_mean, options, pic=pic, prefix='variation', training=False)
+    sample_z,_ = get_layer('variation')[1](tparams, ctx_mean,options,prefix='variation',training=False)
     
     # if it's the first word, emb should be all zero and it is indicated by -1
     emb = tensor.switch(y[:, None] < 0,
@@ -930,7 +927,7 @@ def build_sampler(tparams, options, trng, use_noise):
     # compile a function to do the whole thing above, next word probability,
     # sampled word for the next target, next hidden state to be used
     print 'Building f_next..',
-    inps = [y, ctx, pic, init_state]
+    inps = [y, ctx, init_state]
     outs = [next_probs, next_sample, next_state]
     f_next = theano.function(inps, outs, name='f_next', profile=profile)
     print 'Done'
@@ -940,7 +937,7 @@ def build_sampler(tparams, options, trng, use_noise):
 
 # generate sample, either with stochastic sampling or beam search. Note that,
 # this function iteratively calls f_init and f_next functions.
-def gen_sample(tparams, f_init, f_next, x, pi, options, trng=None, k=1, maxlen=30,
+def gen_sample(tparams, f_init, f_next, x, options, trng=None, k=1, maxlen=30,
                stochastic=True, argmax=False):
 
     # k is the beam size we have
@@ -961,13 +958,13 @@ def gen_sample(tparams, f_init, f_next, x, pi, options, trng=None, k=1, maxlen=3
     hyp_states = []
 
     # get initial state of decoder rnn and encoder context
-    ret = f_init(x,pi)
-    next_state, ctx0, pic = ret[0], ret[1], ret[2]
+    ret = f_init(x)
+    next_state, ctx0 = ret[0], ret[1]
     next_w = -1 * numpy.ones((1,)).astype('int64')  # bos indicator
 
     for ii in xrange(maxlen):
         ctx = numpy.tile(ctx0, [live_k, 1])
-        inps = [next_w, ctx, pic, next_state]
+        inps = [next_w, ctx, next_state]
         ret = f_next(*inps)
         next_p, next_w, next_state = ret[0], ret[1], ret[2]
 
@@ -1045,11 +1042,11 @@ def pred_probs(f_log_probs, prepare_data, options, iterator, verbose=True):
     for x, y, pi in iterator:
         n_done += len(x)
 
-        x, x_mask, y, y_mask, pi = prepare_data(x, y, images = pi,
+        x, x_mask, y, y_mask, _ = prepare_data(x, y,
                                             n_words_src=options['n_words_src'],
                                             n_words=options['n_words'])
 
-        pprobs = f_log_probs(x, x_mask, y, y_mask, pi)
+        pprobs = f_log_probs(x, x_mask, y, y_mask)
         for pp in pprobs:
             probs.append(pp)
 
@@ -1111,7 +1108,7 @@ def adadelta(lr, tparams, grads, inp, cost, kl_cost):
     rg2up = [(rg2, 0.95 * rg2 + 0.05 * (g ** 2))
              for rg2, g in zip(running_grads2, grads)]
 
-    f_grad_shared = theano.function(inp, [cost, kl_cost], updates=zgup+rg2up,
+    f_grad_shared = theano.function(inp, [cost,kl_cost], updates=zgup+rg2up,
                                     profile=profile)
 
     updir = [-tensor.sqrt(ru2 + 1e-6) / tensor.sqrt(rg2 + 1e-6) * zg
@@ -1209,10 +1206,10 @@ def train(dim_word=100,  # word vector dimensionality
               '/data/lisatmp3/chokyun/europarl/europarl-v7.fr-en.en.tok.pkl',
               '/data/lisatmp3/chokyun/europarl/europarl-v7.fr-en.fr.tok.pkl'],
           use_dropout=False,
-          fine_tuning=False,
-          fine_tuning_load="",
           reload_=False,
-          overwrite=False):
+          overwrite=False,
+          fine_tuning=False,
+          fine_tuning_load=""):
 
     # Model options
     model_options = locals().copy()
@@ -1237,9 +1234,9 @@ def train(dim_word=100,  # word vector dimensionality
         print 'Reloading model options'
         with open('%s.pkl' % fine_tuning_load, 'rb') as f:
             model_options = pkl.load(f)
-            model_options["dimv"] = dimv
-            model_options["dim_pi"] = dim_pi
-            model_options["dim_pic"] = dim_pic
+            model_options["dim_pi"]=dim_pi
+            model_options["dim_pic"]=dim_pic
+            model_options["dimv"]=dimv
 
     print 'Loading data'
     train = TextIterator(datasets[0], datasets[1], datasets[2],
@@ -1274,11 +1271,11 @@ def train(dim_word=100,  # word vector dimensionality
     inps = [x, x_mask, y, y_mask, pi]
 
     val_trng, val_use_noise, \
-        val_x, val_x_mask, val_y, val_y_mask, val_pi,\
+        val_x, val_x_mask, val_y, val_y_mask,\
         val_opt_ret, \
         val_cost = \
         build_model(tparams, model_options,training=False)
-    val_inps = [val_x, val_x_mask, val_y, val_y_mask, val_pi]
+    val_inps = [val_x, val_x_mask, val_y, val_y_mask]
 
     print 'Building sampler'
     f_init, f_next = build_sampler(tparams, model_options, trng, use_noise)
@@ -1372,8 +1369,6 @@ def train(dim_word=100,  # word vector dimensionality
                                                 n_words_src=n_words_src,
                                                 n_words=n_words)
 
-            pi = numpy.array(pi, dtype=numpy.float32)
-            
             if x is None:
                 print 'Minibatch with zero sample under length ', maxlen
                 uidx -= 1
@@ -1397,7 +1392,7 @@ def train(dim_word=100,  # word vector dimensionality
 
             # verbose
             if numpy.mod(uidx, dispFreq) == 0:
-                print 'Epoch ', eidx, 'Update ', uidx, 'Cost ', cost, 'UD ', ud, 'kl_cost ', kl_cost
+                print 'Epoch ', eidx, 'Update ', uidx, 'Cost ', cost, 'UD ', ud, 'kl-cost ', kl_cost
 
             # save the best model so far, in addition, save the latest model
             # into a separate file with the iteration number for external eval
@@ -1427,7 +1422,7 @@ def train(dim_word=100,  # word vector dimensionality
                 for jj in xrange(numpy.minimum(5, x.shape[1])):
                     stochastic = True
                     sample, score = gen_sample(tparams, f_init, f_next,
-                                               x[:, jj][:, None],pi[jj, :][None,:],
+                                               x[:, jj][:, None],
                                                model_options, trng=trng, k=1,
                                                maxlen=30,
                                                stochastic=stochastic,
