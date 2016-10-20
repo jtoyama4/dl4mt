@@ -1,3 +1,7 @@
 models/
 flickr30k/
 multeval/
+*.log
+*.swp
+*.swo
+*.pyc
