@@ -1,2 +1,6 @@
 models/
 flickr30k/
+*.log
+*.swp
+*.swo
+*.pyc
