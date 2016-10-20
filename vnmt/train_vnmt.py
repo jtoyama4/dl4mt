@@ -1,15 +1,23 @@
 import numpy
 import os
+import os.path as osp
 import argparse
 
 print "This is VNMT"
+
+basedir = osp.join(osp.dirname(osp.abspath(__file__)), "../")
+modeldir = osp.join(basedir, "models", "vnmt")
+finetunedir = osp.join(basedir, "models", "nmt")
+print("basedir: {}".format(basedir))
+print("modeldir: {}".format(modeldir))
+if not osp.exists(modeldir):
+    os.makedirs(modeldir)
 
 from vnmt import train
 
 
 def main(job_id, params):
     print params
-    basedir = '/home/ubuntu/dl4mt-tutorial'
     validerr = train(saveto=params['model'][0],
                      reload_=params['reload'][0],
                      fine_tuning=params['fine_tuning'][0],
@@ -41,16 +49,14 @@ def main(job_id, params):
     return validerr
 
 if __name__ == '__main__':
-    basedir = '/home/ubuntu/dl4mt-tutorial'
-
     parser = argparse.ArgumentParser(description='')
     parser.add_argument('--load',action='store_true',default=False)
     parser.add_argument('--fine_tuning', action='store_true', default=False)
     args = parser.parse_args()
 
     main(0, {
-        'model': ['%s/models/vnmt/model_vnmt.npz' % basedir],
-        'fine_tuning_load':['%s/models/nmt/model_nmt.npz' % basedir],
+        'model': ['%s/model_vnmt.npz' % modeldir],
+        'fine_tuning_load':['%s/model_nmt.npz' % finetunedir],
         'dim_word': [256],
         'dim': [256],
         'dimv': [100],
