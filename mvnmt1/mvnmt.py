@@ -377,9 +377,9 @@ def param_init_variation(options, params, prefix='variation',
     params[_p(prefix, 'W_pri_sigma')] = W_pri_sigma
     params[_p(prefix, 'W_pri_sigma_b')] = numpy.zeros((dimv,)).astype('float32')
 
-    W_post = numpy.concatenate([norm_weight(dimctx,dimv),norm_weight(dimctx_y,dimv),norm_weight(dim_pic,dimv)], axis = 0)
-    params[_p(prefix, 'W_post')] = W_post
-    params[_p(prefix, 'W_post_b')] = numpy.zeros((dimv,)).astype('float32')
+    W_post_pi = numpy.concatenate([norm_weight(dimctx,dimv),norm_weight(dimctx_y,dimv),norm_weight(dim_pic,dimv)], axis = 0)
+    params[_p(prefix, 'W_post_pi')] = W_post_pi
+    params[_p(prefix, 'W_post_pi_b')] = numpy.zeros((dimv,)).astype('float32')
     
     W_post_mu = norm_weight(dimv,dimv)
     params[_p(prefix, 'W_post_mu')] = W_post_mu
@@ -406,7 +406,7 @@ def variation_layer(tparams, ctx_means, options, prefix='variation', ctx_y_means
     # prepare h_z' for both posterior and prior
     pri_h = tensor.tanh(tensor.dot(ctx_means, tparams[_p(prefix, 'W_pri')]) + tparams[_p(prefix, 'W_pri_b')])
     if training:
-        post_h = tensor.tanh(tensor.dot(concatenate([ctx_means, ctx_y_means, pic],axis=1), tparams[_p(prefix, 'W_post')]) + tparams[_p(prefix, 'W_post_b')])
+        post_h = tensor.tanh(tensor.dot(concatenate([ctx_means, ctx_y_means, pic],axis=1), tparams[_p(prefix, 'W_post_pi')]) + tparams[_p(prefix, 'W_post_pi_b')])
     
     #Gaussian Parameters w.r.t Prior and Posterior
     pri_mu = tensor.dot(pri_h, tparams[_p(prefix, 'W_pri_mu')]) + tparams[_p(prefix, 'W_pri_mu_b')]

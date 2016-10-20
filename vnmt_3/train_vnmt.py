@@ -2,9 +2,9 @@ import numpy
 import os
 import argparse
 
-print "This is NMT"
+print "This is VNMT"
 
-from nmt import train
+from vnmt import train
 
 
 def main(job_id, params):
@@ -12,8 +12,11 @@ def main(job_id, params):
     basedir = '/home/ubuntu/dl4mt-tutorial'
     validerr = train(saveto=params['model'][0],
                      reload_=params['reload'][0],
+                     fine_tuning=params['fine_tuning'][0],
+                     fine_tuning_load=params['fine_tuning_load'][0],
                      dim_word=params['dim_word'][0],
                      dim=params['dim'][0],
+                     dimv=params['dimv'][0],
                      n_words=params['n-words'][1],
                      n_words_src=params['n-words'][0],
                      decay_c=params['decay-c'][0],
@@ -38,15 +41,19 @@ def main(job_id, params):
     return validerr
 
 if __name__ == '__main__':
+    basedir = '/home/ubuntu/dl4mt-tutorial'
+
     parser = argparse.ArgumentParser(description='')
     parser.add_argument('--load',action='store_true',default=False)
+    parser.add_argument('--fine_tuning', action='store_true', default=False)
     args = parser.parse_args()
 
-    basedir = '/home/ubuntu/dl4mt-tutorial'
     main(0, {
-        'model': ['%s/models/nmt/model_nmt.npz' % basedir],
+        'model': ['%s/models/vnmt/model_vnmt_3.npz' % basedir],
+        'fine_tuning_load':['%s/models/nmt/model_nmt.npz' % basedir],
         'dim_word': [256],
         'dim': [256],
+        'dimv': [100],
         #'n-words': [30000],
         'n-words': [10211,18723],
         'optimizer': ['adadelta'],
@@ -55,4 +62,5 @@ if __name__ == '__main__':
         'use-dropout': [False],
         #'learning-rate': [0.0001],
         'learning-rate': [1.0],
-        'reload': [args.load]})
+        'reload': [args.load],
+        'fine_tuning': [args.fine_tuning]})

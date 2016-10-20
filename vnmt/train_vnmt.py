@@ -34,7 +34,7 @@ def main(job_id, params):
                                    '%s/flickr30k/bitext.train.de.tok.txt.pkl' % basedir],
                      validFreq=1000,
                      dispFreq=1,
-                     saveFreq=10,
+                     saveFreq=1000,
                      sampleFreq=50,
                      use_dropout=params['use-dropout'][0],
                      overwrite=False)

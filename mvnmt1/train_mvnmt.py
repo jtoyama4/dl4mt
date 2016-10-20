@@ -54,7 +54,7 @@ if __name__ == '__main__':
 
     main(0, {
         'model': ['%s/models/mvnmt/model_vnmt.npz' % basedir],
-        'fine_tuning_load':['%s/models/vnmt/model_nmt.npz' % basedir],
+        'fine_tuning_load':['%s/models/vnmt/model_vnmt.npz' % basedir],
         'dim_word': [256],
         'dim': [256],
         'dimv': [100],
