@@ -23,6 +23,11 @@ SRC_DICT="../flickr30k/bitext.train.en.tok.txt.pkl"
 DST_DICT="../flickr30k/bitext.train.de.tok.txt.pkl"
 SRC="../flickr30k/bitext.val.en.tok.txt"
 OPTION_FILE="$MODEL_DIR/model_$TYPE.npz.pkl"
+if [ "$TYPE" == "nmt" ] ; then
+    TRANSLATE_SCRIPT="../session3/translate.py"
+else
+    TRANSLATE_SCRIPT="../$TYPE/translate.py"
+fi
 
 if [ $# -ge 4 ] ; then
     N=$4
@@ -45,7 +50,7 @@ do
     #echo $MODEL
     
     TARGET="$OUTDIR/result.$TYPE.$N.txt"
-    THEANO_FLAGS='device=cpu' python ../session3/translate.py -p $P -k $K -o $OPTION_FILE $MODEL $SRC_DICT $DST_DICT $SRC $TARGET
+    THEANO_FLAGS='device=cpu' python $TRANSLATE_SCRIPT -p $P -k $K -o $OPTION_FILE $MODEL $SRC_DICT $DST_DICT $SRC $TARGET
 
     N=$((N+STEP))
 done
