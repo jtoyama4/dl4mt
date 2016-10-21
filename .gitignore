@@ -6,3 +6,6 @@ dummy/
 *.swp
 *.swo
 *.pyc
+*.jar
+meteor-1.5/
+*.png

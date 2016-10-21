@@ -11,6 +11,8 @@ import numpy
 import copy
 
 import os
+import os.path as osp
+import subprocess
 import warnings
 import sys
 import time
@@ -21,6 +23,18 @@ from data_iterator import TextIterator
 
 profile = False
 
+# http://stackoverflow.com/questions/431684/how-do-i-cd-in-python
+class cd:
+    """Context manager for changing the current working directory"""
+    def __init__(self, newPath):
+        self.newPath = os.path.expanduser(newPath)
+
+    def __enter__(self):
+        self.savedPath = os.getcwd()
+        os.chdir(self.newPath)
+
+    def __exit__(self, etype, value, traceback):
+        os.chdir(self.savedPath)
 
 # push parameters to Theano shared variables
 def zipp(params, tparams):
@@ -1163,9 +1177,12 @@ def train(dim_word=100,  # word vector dimensionality
           dictionaries=[
               '/data/lisatmp3/chokyun/europarl/europarl-v7.fr-en.en.tok.pkl',
               '/data/lisatmp3/chokyun/europarl/europarl-v7.fr-en.fr.tok.pkl'],
+          valid_detok_datasets=False,
           use_dropout=False,
           reload_=False,
           fine_tuning=False,
+          validdir=None,
+          scriptdir=None,
           fine_tuning_load='fine_tuning',
           overwrite=False):
 
@@ -1442,6 +1459,73 @@ def train(dim_word=100,  # word vector dimensionality
                     ipdb.set_trace()
 
                 print 'Valid ', valid_err
+
+                # generate sample
+                if model_options["validdir"] != None:
+                    print("generate valid data translation...")
+                    result_file = osp.join(model_options["validdir"], "nmt.{}.txt".format(uidx))
+                    detok_file = osp.join(model_options["validdir"], "nmt.{}.detok.txt".format(uidx))
+                    with open(result_file,"w") as f:
+                        for vx, vy in valid:
+                            _x, _x_mask, _y, _y_mask = prepare_data(vx, vy,
+                                                                n_words_src=model_options['n_words_src'],
+                                                                n_words=model_options['n_words'])
+
+                            stochastic = True
+                            for jj in xrange(_x.shape[1]):
+                                sample, score = gen_sample(tparams, f_init, f_next,
+                                                           _x[:,jj][:,None],
+                                                           model_options, trng=trng, k=1,
+                                                           maxlen=maxlen,
+                                                           stochastic=stochastic,
+                                                           argmax=False)
+                                result = ''
+                                if stochastic:
+                                    ss = sample
+                                else:
+                                    score = score / numpy.array([len(s) for s in sample])
+                                    ss = sample[score.argmin()]
+                                for vv in ss:
+                                    if vv == 0:
+                                        break
+                                    if vv in worddicts_r[1]:
+                                        result += worddicts_r[1][vv]
+                                        result += ' '
+                                    else:
+                                        #print 'UNK',
+                                        pass
+                                result += '\n'
+                                f.write(result)
+                    print("done")
+
+                    if scriptdir is not None and valid_detok_datasets is not None:
+                        print("detokenize...")
+                        with cd(scriptdir):
+                            cmd = "perl detokenizer.perl -l de < {} > {}".format(result_file, detok_file)
+                            subprocess.call(cmd, shell=True)
+                        print("done")
+
+                    meteordir = osp.join(scriptdir, "meteor-1.5")
+                    if osp.exists(meteordir):
+                        def _get_meteor(src, target, norm=False):
+                            cmd = "java -Xmx2G -jar meteor-1.5.jar {} {} -l de".format(src, target)
+                            if norm:
+                                cmd += " -norm"
+                            print(cmd)
+                            proc = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE)
+                            buf = []
+                            while True:
+                                line = proc.stdout.readline()
+                                if not line and proc.poll() is not None:
+                                    break
+                                buf.append(line)
+                            return buf[-1][buf[-1].find(':')+1:].strip()
+
+                        with cd(meteordir):
+                            print("METEOR, {}, {}".format(_get_meteor(detok_file, valid_detok_datasets[1]),
+                                                    _get_meteor(detok_file, valid_detok_datasets[1],norm=True)))
+                        print("done")
+
 
             # finish after this many updates
             if uidx >= finish_after:
