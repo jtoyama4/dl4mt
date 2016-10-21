@@ -1,6 +1,7 @@
 models/
 flickr30k/
 multeval/
+dummy/
 *.log
 *.swp
 *.swo

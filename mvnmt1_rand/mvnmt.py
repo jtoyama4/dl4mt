@@ -198,6 +198,7 @@ def prepare_data(seqs_x, seqs_y, images=None, maxlen=None, n_words_src=30000,
     y = numpy.zeros((maxlen_y, n_samples)).astype('int64')
     x_mask = numpy.zeros((maxlen_x, n_samples)).astype('float32')
     y_mask = numpy.zeros((maxlen_y, n_samples)).astype('float32')
+    
     for idx, [s_x, s_y] in enumerate(zip(seqs_x, seqs_y)):
         x[:lengths_x[idx], idx] = s_x
         x_mask[:lengths_x[idx]+1, idx] = 1.

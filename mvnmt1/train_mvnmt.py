@@ -53,7 +53,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     main(0, {
-        'model': ['%s/models/mvnmt/model_mvnmt.npz' % basedir],
+        'model': ['%s/models/mvnmt/model_mvnmt_without_fine.npz' % basedir],
         'fine_tuning_load':['%s/models/vnmt/model_vnmt.npz' % basedir],
         'dim_word': [256],
         'dim': [256],

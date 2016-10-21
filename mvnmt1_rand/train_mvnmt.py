@@ -2,7 +2,7 @@ import numpy
 import os
 import argparse
 
-print "This is MVNMT"
+print "This is MVNMT with random"
 
 from mvnmt import train
 
@@ -30,10 +30,10 @@ def main(job_id, params):
                      valid_batch_size=128,
                      datasets=['%s/flickr30k/bitext.train.en.tok.txt' % basedir,
                                '%s/flickr30k/bitext.train.de.tok.txt' % basedir,
-                               '%s/flickr30k/fc7.train.npy' % basedir],
+                               '%s/dummy/dummy_fc7_gaussian.train.npy' % basedir],
                      valid_datasets=['%s/flickr30k/bitext.val.en.tok.txt' % basedir,
                                      '%s/flickr30k/bitext.val.de.tok.txt' % basedir,
-                                     '%s/flickr30k/fc7.val.npy' % basedir],
+                                     '%s/dummy/dummy_fc7_gaussian.val.npy' % basedir],
                      dictionaries=['%s/flickr30k/bitext.train.en.tok.txt.pkl' % basedir,
                                    '%s/flickr30k/bitext.train.de.tok.txt.pkl' % basedir],
                      validFreq=1000,
@@ -53,7 +53,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     main(0, {
-        'model': ['%s/models/mvnmt/model_mvnmt.npz' % basedir],
+        'model': ['%s/models/mvnmt/model_mvnmt_rand.npz' % basedir],
         'fine_tuning_load':['%s/models/vnmt/model_vnmt.npz' % basedir],
         'dim_word': [256],
         'dim': [256],
