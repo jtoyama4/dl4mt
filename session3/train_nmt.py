@@ -6,6 +6,7 @@ import argparse
 print "This is NMT"
 
 basedir = osp.join(osp.dirname(osp.abspath(__file__)), "../")
+
 modeldir =osp.join(basedir, "models","nmt")
 validdir = osp.join(modeldir, "valid")
 scriptdir = osp.join(basedir, "script")

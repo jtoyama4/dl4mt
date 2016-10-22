@@ -2,6 +2,8 @@ models/
 flickr30k/
 multeval/
 dummy/
+script/meteor-1.5/
+script/meteor-1.5.tar.gz
 *.log
 *.swp
 *.swo
