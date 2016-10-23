@@ -393,7 +393,7 @@ def param_init_variation(options, params, prefix='variation',
 
 def variation_layer(tparams, ctx_means, options, prefix='variation', ctx_y_means=None, pic=None, mask=None,training=True, **kwargs):
     #state_belows = [ctx_means,cty_means]
-    dimv = 100
+    dimv = options['dimv']
     
     if training:
         assert ctx_y_means
@@ -431,7 +431,7 @@ def variation_layer(tparams, ctx_means, options, prefix='variation', ctx_y_means
             SIGMA = tensor.diag(sigma)
             result = mu + tensor.dot(SIGMA, noise)
             return result
-    trng = RandomStreams(1234)
+    trng = RandomStreams(numpy.random.randint(int(1e6)))
     normal_noise = trng.normal((nsteps,dimv))
     if training:
         seqs = [post_mu, post_sigma, normal_noise]

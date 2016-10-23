@@ -47,8 +47,11 @@ def translate_model(queue, rqueue, pid, model, options, k, normalize, n_best):
         return numpy.array(sample)[sidx], numpy.array(score)[sidx]
 
     while True:
+        print pid, "get start"
         req = queue.get()
+        print pid, "yay"
         if req is None:
+            print pid, "break!!!"
             break
 
         idx, x, pi = req[0], req[1], req[2]
@@ -121,7 +124,7 @@ def main(model, dictionary, dictionary_target, source_file, image_file, saveto, 
                 x += [0]
                 queue.put((idx, x, image.reshape((1,4096))))
                 idx += 1
-        return idx+1
+        return idx
                 
 
     def _finish_processes():
