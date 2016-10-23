@@ -394,7 +394,7 @@ def param_init_variation(options, params, prefix='variation',
 
 def variation_layer(tparams, ctx_means, options, prefix='variation', ctx_y_means=None, pic=None, mask=None,training=True, **kwargs):
     #state_belows = [ctx_means,cty_means]
-    dimv = 100
+    dimv = options['dimv']
     
     if training:
         assert ctx_y_means
