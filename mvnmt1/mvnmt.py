@@ -582,8 +582,8 @@ def gru_cond_layer(tparams, state_below, options, prefix='gru',
 
         preactx1 = tensor.dot(h_, Ux)
         preactx1 *= r1
-        #preactx1 += xx_
-        preactx1 += tensor.dot(he, Vcx)
+        preactx1 += xx_
+        #preactx1 += tensor.dot(he, Vcx)
 
         h1 = tensor.tanh(preactx1)
 
