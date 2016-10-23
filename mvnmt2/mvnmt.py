@@ -67,6 +67,7 @@ def init_tparams(params):
 def load_params(path, params):
     pp = numpy.load(path)
     for kk, vv in params.iteritems():
+        print kk
         if kk not in pp:
             warnings.warn('%s is not in the archive' % kk)
             continue
@@ -432,7 +433,7 @@ def variation_layer(tparams, ctx_means, options, prefix='variation', ctx_y_means
             SIGMA = tensor.diag(sigma)
             result = mu + tensor.dot(SIGMA, noise)
             return result
-    trng = RandomStreams(1234)
+    trng = RandomStreams(numpy.random.randint(int(1e6)))
     normal_noise = trng.normal((nsteps,dimv))
     if training:
         seqs = [post_mu, post_sigma, normal_noise]
