@@ -20,7 +20,7 @@ P=10 # process number
 #K=12 # beam width
 K=12 # beam width
 SRC_DICT="../flickr30k/bitext.train.en.tok.txt.pkl"
-DST_DICT="../flickr30k/bitext.train.de.tok.txt.pkl"
+DST_DICT="../flickr30k/bitext.train.de.tok.bpe.txt.pkl"
 SRC="../flickr30k/bitext.val.en.tok.txt"
 OPTION_FILE="$MODEL_DIR/model_$TYPE.npz.pkl"
 if [ "$TYPE" == "nmt" ] ; then
@@ -40,6 +40,8 @@ fi
 if [ -d "$OUTDIR" ] ; then
     mkdir -p $OUTDIR
 fi
+
+mkdir -p $OUTDIR
 
 while true
 do
