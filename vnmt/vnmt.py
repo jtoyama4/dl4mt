@@ -380,7 +380,8 @@ def param_init_variation(options, params, prefix='variation',
 
 def variation_layer(tparams, ctx_means, options, prefix='variation', ctx_y_means=None,mask=None,training=True, **kwargs):
     #state_belows = [ctx_means,cty_means]
-    dimv = 100
+    #dimv = 100
+    dimv = options["dimv"]
     
     if training:
         assert ctx_y_means
@@ -418,7 +419,7 @@ def variation_layer(tparams, ctx_means, options, prefix='variation', ctx_y_means
             result = mu + tensor.dot(SIGMA, noise)
             return result
     trng = RandomStreams(numpy.random.randint(int(1e6)))
-    normal_noise = trng.normal((128,dimv))
+    normal_noise = trng.normal((nsteps,dimv))
     if training:
         seqs = [post_mu, post_sigma, normal_noise]
     else:
@@ -1461,10 +1462,10 @@ def train(dim_word=100,  # word vector dimensionality
                 print 'Valid ', valid_err
 
                 # generate sample
-                if model_options["validdir"] != None:
+                if validdir != None:
                     print("generate valid data translation...")
-                    result_file = osp.join(model_options["validdir"], "nmt.{}.txt".format(uidx))
-                    detok_file = osp.join(model_options["validdir"], "nmt.{}.detok.txt".format(uidx))
+                    result_file = osp.join(validdir, "nmt.{}.txt".format(uidx))
+                    detok_file = osp.join(validdir, "nmt.{}.detok.txt".format(uidx))
                     with open(result_file,"w") as f:
                         for vx, vy in valid:
                             _x, _x_mask, _y, _y_mask = prepare_data(vx, vy,
