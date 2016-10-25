@@ -1,6 +1,7 @@
 import cPickle as pkl
 import gzip
 import numpy
+import os.path
 
 def fopen(filename, mode='r'):
     if filename.endswith('.gz'):
@@ -18,7 +19,9 @@ class TextIterator:
                  n_words_target=-1):
         self.source = fopen(source, 'r')
         self.target = fopen(target, 'r')
-        self.image = numpy.load(image)
+        self.image_list = fopen(image, 'r')
+        self.image_basedir = os.path.dirname(image)
+        #self.image = numpy.load(image)
         with open(source_dict, 'rb') as f:
             self.source_dict = pkl.load(f)
         with open(target_dict, 'rb') as f:
@@ -80,9 +83,13 @@ class TextIterator:
                     self.count += 1
                     continue
                 
+                # read image
+                # image shape : (num_of_objects, image_feature)
+                ii = np.load(os.path.join(os.image_basedir,self.image_list.readline().strip()))
+
                 source.append(ss)
                 target.append(tt)
-                image.append(self.image[self.count])
+                image.append(ii)
 
                 self.count += 1
 
