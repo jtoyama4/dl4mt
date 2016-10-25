@@ -161,7 +161,7 @@ def concatenate(tensor_list, axis=0):
 
 # batch preparation
 def prepare_data(seqs_x, seqs_y, images=None, maxlen=None, n_words_src=30000,
-                 n_words=30000):
+                 n_words=30000,dim_pi=4096):
     # x: a list of sentences
     assert images
     lengths_x = [len(s) for s in seqs_x]
@@ -201,21 +201,21 @@ def prepare_data(seqs_x, seqs_y, images=None, maxlen=None, n_words_src=30000,
     maxlen_y = numpy.max(lengths_y) + 1
     maxlen_pi = numpy.max(lengths_pi) + 1
 
-    pi_dim = images.shape[1]
+    pi_dim = dim_pi
 
     x = numpy.zeros((maxlen_x, n_samples)).astype('int64')
     y = numpy.zeros((maxlen_y, n_samples)).astype('int64')
     pi = numpy.zeros((maxlen_pi, n_samples, pi_dim)).astype('float32')
     x_mask = numpy.zeros((maxlen_x, n_samples)).astype('float32')
     y_mask = numpy.zeros((maxlen_y, n_samples)).astype('float32')
-    pi_mask = numoy.zeros((maxlen_pi, n_samples)).astype('float32')
+    pi_mask = numpy.zeros((maxlen_pi, n_samples)).astype('float32')
 
     for idx, [s_x, s_y, p] in enumerate(zip(seqs_x, seqs_y, images)):
         x[:lengths_x[idx], idx] = s_x
         x_mask[:lengths_x[idx]+1, idx] = 1.
         y[:lengths_y[idx], idx] = s_y
         y_mask[:lengths_y[idx]+1, idx] = 1.
-        pi[:lengths_pi[idx], odx, :] = p
+        pi[:lengths_pi[idx], idx, :] = p
         pi_mask[:lengths_pi[idx], idx] = 1
 
     return x, x_mask, y, y_mask, pi, pi_mask
@@ -740,8 +740,8 @@ def build_model(tparams, options, training=True):
     x_mask = tensor.matrix('x_mask', dtype='float32')
     y = tensor.matrix('y', dtype='int64')
     y_mask = tensor.matrix('y_mask', dtype='float32')
-    pi = tensor.tensor('pi', dtype='float32')
-    pi_mask = tensor.matrix('pi_mask', dtyoe='float32')
+    pi = tensor.tensor3('pi', dtype='float32')
+    pi_mask = tensor.matrix('pi_mask', dtype='float32')
 
     # for the backward rnn, we just need to invert x and x_mask
     xr = x[::-1]
@@ -751,7 +751,7 @@ def build_model(tparams, options, training=True):
 
     n_timesteps = x.shape[0]
     n_timesteps_trg = y.shape[0]
-    n_timesteps_img = pi.shape[0]
+    n_timesteps_pi = pi.shape[0]
     n_samples = x.shape[1]
 
     pi_dim = pi.shape[2]
@@ -785,8 +785,8 @@ def build_model(tparams, options, training=True):
                                              mask=yr_mask)
     
     # image feature extraction
-    pic = get_layer('image')[1](tparams, pi.reshape([None,pi_dim]), options, prefix='image')
-    pic = pic.reshape([n_timesteos_pi, n_sample, None])
+    pic = get_layer('image')[1](tparams, pi.reshape([n_timesteps_pi*n_samples, pi_dim]), options, prefix='image')
+    pic = pic.reshape([n_timesteps_pi, n_samples, options['dim_pic']])
     pic = (pic * pi_mask[:,:,None]).sum(0) / pi_mask.sum(0)[:, None]
 
     # context will be the concatenation of forward and backward rnns
@@ -863,7 +863,7 @@ def build_model(tparams, options, training=True):
     cost = (cost * y_mask).sum(0)
 
     if not training:
-        return trng, use_noise, x, x_mask, y, y_mask, pi, opt_ret, cost
+        return trng, use_noise, x, x_mask, y, y_mask, pi, pi_mask, opt_ret, cost
 
     return trng, use_noise, x, x_mask, y, y_mask, pi, pi_mask, opt_ret, cost, kl_cost
  
@@ -872,13 +872,14 @@ def build_model(tparams, options, training=True):
 def build_sampler(tparams, options, trng, use_noise):
     x = tensor.matrix('x', dtype='int64')
     xr = x[::-1]
-    pi = tensor.tensor('pi', dtype='float32')
+    pi = tensor.tensor3('pi', dtype='float32')
+    pi_mask = tensor.matrix('pi_mask', dtype='float32')
 
     n_timesteps = x.shape[0]
     n_timesteps_pi = pi.shape[0]
     n_samples = x.shape[1]
 
-    pi_dim = pi.shape[2]
+    pi_dim = options['dim_pi']
 
     # word embedding (source), forward and backward
     emb = tparams['Wemb'][x.flatten()]
@@ -893,8 +894,8 @@ def build_sampler(tparams, options, trng, use_noise):
                                              prefix='encoder_r')
 
     # image feature extraction
-    pic = get_layer('image')[1](tparams, pi.reshape([None,pi_dim]), options, prefix='image')
-    pic = pic.reshape([n_timesteos_pi, n_sample, None])
+    pic = get_layer('image')[1](tparams, pi.reshape([n_timesteps_pi*n_samples,pi_dim]), options, prefix='image')
+    pic = pic.reshape([n_timesteps_pi, n_samples, pi_dim])
     pic = (pic * pi_mask[:,:,None]).sum(0) / pi_mask.sum(0)[:, None]
 
     # concatenate forward and backward rnn hidden states
@@ -908,7 +909,7 @@ def build_sampler(tparams, options, trng, use_noise):
 
     print 'Building f_init...',
     outs = [init_state, ctx, pic]
-    f_init = theano.function([x,pi], outs, name='f_init', profile=profile)
+    f_init = theano.function([x,pi,pi_mask], outs, name='f_init', profile=profile)
     print 'Done'
 
     # x: 1 x 1
@@ -1070,11 +1071,11 @@ def pred_probs(f_log_probs, prepare_data, options, iterator, verbose=True):
     for x, y, pi in iterator:
         n_done += len(x)
 
-        x, x_mask, y, y_mask, pi = prepare_data(x, y, images = pi,
+        x, x_mask, y, y_mask, pi, pi_mask = prepare_data(x, y, images = pi,
                                             n_words_src=options['n_words_src'],
-                                            n_words=options['n_words'])
+                                                         n_words=options['n_words'],dim_pi=options['dim_pi'])
 
-        pprobs = f_log_probs(x, x_mask, y, y_mask, pi)
+        pprobs = f_log_probs(x, x_mask, y, y_mask, pi, pi_mask)
         for pp in pprobs:
             probs.append(pp)
 
@@ -1292,18 +1293,18 @@ def train(dim_word=100,  # word vector dimensionality
     tparams = init_tparams(params)
 
     trng, use_noise, \
-        x, x_mask, y, y_mask, pi,\
+        x, x_mask, y, y_mask, pi,pi_mask,\
         opt_ret, \
         cost, kl_cost = \
         build_model(tparams, model_options)
-    inps = [x, x_mask, y, y_mask, pi]
+    inps = [x, x_mask, y, y_mask, pi, pi_mask]
 
     val_trng, val_use_noise, \
-        val_x, val_x_mask, val_y, val_y_mask, val_pi,\
+        val_x, val_x_mask, val_y, val_y_mask, val_pi, val_pi_mask,\
         val_opt_ret, \
         val_cost = \
         build_model(tparams, model_options,training=False)
-    val_inps = [val_x, val_x_mask, val_y, val_y_mask, val_pi]
+    val_inps = [val_x, val_x_mask, val_y, val_y_mask, val_pi, val_pi_mask]
 
     print 'Building sampler'
     f_init, f_next = build_sampler(tparams, model_options, trng, use_noise)
@@ -1395,7 +1396,7 @@ def train(dim_word=100,  # word vector dimensionality
 
             x, x_mask, y, y_mask, pi, pi_mask = prepare_data(x, y, images=pi, maxlen=maxlen,
                                                 n_words_src=n_words_src,
-                                                n_words=n_words)
+                                                             n_words=n_words, dim_pi=dim_pi)
 
             #pi = numpy.array(pi, dtype=numpy.float32)
             

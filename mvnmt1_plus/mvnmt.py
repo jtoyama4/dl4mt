@@ -160,7 +160,7 @@ def concatenate(tensor_list, axis=0):
 
 # batch preparation
 def prepare_data(seqs_x, seqs_y, images=None, maxlen=None, n_words_src=30000,
-                 n_words=30000):
+                 n_words=30000,dim_pi=4096):
     # x: a list of sentences
     lengths_x = [len(s) for s in seqs_x]
     lengths_y = [len(s) for s in seqs_y]
@@ -201,13 +201,13 @@ def prepare_data(seqs_x, seqs_y, images=None, maxlen=None, n_words_src=30000,
     maxlen_x = numpy.max(lengths_x) + 1
     maxlen_y = numpy.max(lengths_y) + 1
     maxlen_pi = numpy.max(lengths_pi) + 1
-    pi_dim = images.shape[1]
+    pi_dim = dim_pi
     x = numpy.zeros((maxlen_x, n_samples)).astype('int64')
     y = numpy.zeros((maxlen_y, n_samples)).astype('int64')
     pi = numpy.zeros((maxlen_pi, n_samples, pi_dim)).astype('float32') 
     x_mask = numpy.zeros((maxlen_x, n_samples)).astype('float32')
     y_mask = numpy.zeros((maxlen_y, n_samples)).astype('float32')
-    pi_mask = numpy.zeros((maxlen_py, n_samples)).astype('float32')
+    pi_mask = numpy.zeros((maxlen_pi, n_samples)).astype('float32')
     for idx, [s_x, s_y, p] in enumerate(zip(seqs_x, seqs_y, images)):
         x[:lengths_x[idx], idx] = s_x
         x_mask[:lengths_x[idx]+1, idx] = 1.
@@ -738,7 +738,7 @@ def build_model(tparams, options, training=True):
     x_mask = tensor.matrix('x_mask', dtype='float32')
     y = tensor.matrix('y', dtype='int64')
     y_mask = tensor.matrix('y_mask', dtype='float32')
-    pi = tensor.tensor('pi', dtype='float32')
+    pi = tensor.tensor3('pi', dtype='float32')
     pi_mask = tensor.matrix('pi_mask', dtype='float32')
 
     # for the backward rnn, we just need to invert x and x_mask
@@ -751,8 +751,9 @@ def build_model(tparams, options, training=True):
     n_timesteps_trg = y.shape[0]
     n_timesteps_pi = pi.shape[0]
     n_samples = x.shape[1]
-
-    pi_dim = pi.shape[2]
+    
+    if training:
+        pi_dim = pi.shape[2]
 
     # word embedding for forward rnn (source)
     emb = tparams['Wemb'][x.flatten()]
@@ -783,9 +784,10 @@ def build_model(tparams, options, training=True):
                                              mask=yr_mask)
     
     # image feature extraction
-    pic = get_layer('image')[1](tparams, pi.reshape([None,pi_dim]), options, prefix='image')
-    pic = pic.reshape([n_timesteps_pi, n_sample, None])
-    pic = (pic * pi_mask[:,:,None]).sum(0) / pi_mask.sum(0)[:, None]
+    if training:
+        pic = get_layer('image')[1](tparams, pi.reshape([n_timesteps_pi*n_samples,pi_dim]), options, prefix='image')
+        pic = pic.reshape([n_timesteps_pi, n_samples, options['dim_pic']])
+        pic = (pic * pi_mask[:,:,None]).sum(0) / pi_mask.sum(0)[:, None]
 
     # context will be the concatenation of forward and backward rnns
     ctx = concatenate([proj[0], projr[0][::-1]], axis=proj[0].ndim-1)
@@ -864,7 +866,7 @@ def build_model(tparams, options, training=True):
     if not training:
         return trng, use_noise, x, x_mask, y, y_mask, opt_ret, cost
 
-    return trng, use_noise, x, x_mask, y, y_mask, pi, opt_ret, cost, kl_cost
+    return trng, use_noise, x, x_mask, y, y_mask, pi, pi_mask, opt_ret, cost, kl_cost
  
 
 # build a sampler
@@ -1059,9 +1061,9 @@ def pred_probs(f_log_probs, prepare_data, options, iterator, verbose=True):
     for x, y, pi in iterator:
         n_done += len(x)
 
-        x, x_mask, y, y_mask, _ = prepare_data(x, y,
+        x, x_mask, y, y_mask, _, _ = prepare_data(x, y,
                                             n_words_src=options['n_words_src'],
-                                            n_words=options['n_words'])
+                                                  n_words=options['n_words'],dim_pi=options['dim_pi'])
 
         pprobs = f_log_probs(x, x_mask, y, y_mask)
         for pp in pprobs:
@@ -1281,11 +1283,11 @@ def train(dim_word=100,  # word vector dimensionality
     tparams = init_tparams(params)
 
     trng, use_noise, \
-        x, x_mask, y, y_mask, pi,\
+        x, x_mask, y, y_mask, pi,pi_mask,\
         opt_ret, \
         cost, kl_cost = \
         build_model(tparams, model_options)
-    inps = [x, x_mask, y, y_mask, pi]
+    inps = [x, x_mask, y, y_mask, pi, pi_mask]
 
     val_trng, val_use_noise, \
         val_x, val_x_mask, val_y, val_y_mask,\
@@ -1384,7 +1386,7 @@ def train(dim_word=100,  # word vector dimensionality
 
             x, x_mask, y, y_mask, pi, pi_mask = prepare_data(x, y, images=pi, maxlen=maxlen,
                                                 n_words_src=n_words_src,
-                                                n_words=n_words)
+                                                             n_words=n_words,dim_pi=dim_pi)
 
             if x is None:
                 print 'Minibatch with zero sample under length ', maxlen
@@ -1394,7 +1396,7 @@ def train(dim_word=100,  # word vector dimensionality
             ud_start = time.time()
 
             # compute cost, grads and copy grads to shared variables
-            cost, kl_cost = f_grad_shared(x, x_mask, y, y_mask, pi)
+            cost, kl_cost = f_grad_shared(x, x_mask, y, y_mask, pi, pi_mask)
 
             # do the update on parameters
             f_update(lrate)
