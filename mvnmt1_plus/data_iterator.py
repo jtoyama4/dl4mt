@@ -11,7 +11,7 @@ def fopen(filename, mode='r'):
 
 class TextIterator:
     """Simple Bitext iterator."""
-    def __init__(self, source, target,image,
+    def __init__(self, source, target,image,global_fc7,
                  source_dict, target_dict,
                  batch_size=128,
                  maxlen=100,
@@ -21,7 +21,7 @@ class TextIterator:
         self.target = fopen(target, 'r')
         self.image_list = fopen(image, 'r')
         self.image_basedir = os.path.dirname(image)
-        #self.image = numpy.load(image)
+        self.global_fc7 = numpy.load(global_fc7)
         with open(source_dict, 'rb') as f:
             self.source_dict = pkl.load(f)
         with open(target_dict, 'rb') as f:
@@ -86,7 +86,10 @@ class TextIterator:
                 
                 # read image
                 # image shape : (num_of_objects, image_feature)
+                fc7_global = self.global_fc7[self.count]
+                fc7_global = fc7_global[numpy.newaxis,:]
                 ii = numpy.load(os.path.join(self.image_basedir,self.image_list.readline().strip()))
+                ii = numpy.concatenate((fc7_global,ii),axis=0)
                 source.append(ss)
                 target.append(tt)
                 image.append(ii)
