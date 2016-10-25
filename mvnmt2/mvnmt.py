@@ -163,6 +163,7 @@ def concatenate(tensor_list, axis=0):
 def prepare_data(seqs_x, seqs_y, images=None, maxlen=None, n_words_src=30000,
                  n_words=30000):
     # x: a list of sentences
+    assert images
     lengths_x = [len(s) for s in seqs_x]
     lengths_y = [len(s) for s in seqs_y]
     if not images:
