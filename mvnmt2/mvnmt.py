@@ -166,15 +166,15 @@ def prepare_data(seqs_x, seqs_y, images=None, maxlen=None, n_words_src=30000,
     assert images
     lengths_x = [len(s) for s in seqs_x]
     lengths_y = [len(s) for s in seqs_y]
-    if not images:
-        images = [0 for s in seqs_x]
+    
 
     if maxlen is not None:
         new_seqs_x = []
         new_seqs_y = []
+        new_images = []
         new_lengths_x = []
         new_lengths_y = []
-        new_images = []
+        new_lengths_pi = []
 
         for l_x, s_x, l_y, s_y, p in zip(lengths_x, seqs_x, lengths_y, seqs_y, images):
             if l_x < maxlen and l_y < maxlen:
@@ -188,6 +188,7 @@ def prepare_data(seqs_x, seqs_y, images=None, maxlen=None, n_words_src=30000,
         lengths_y = new_lengths_y
         seqs_y = new_seqs_y
         images = new_images
+        
 
         if len(lengths_x) < 1 or len(lengths_y) < 1:
             return None, None, None, None, None
@@ -195,11 +196,17 @@ def prepare_data(seqs_x, seqs_y, images=None, maxlen=None, n_words_src=30000,
     n_samples = len(seqs_x)
     maxlen_x = numpy.max(lengths_x) + 1
     maxlen_y = numpy.max(lengths_y) + 1
+    #maxlen_pi = numpy.max(lengths_pi) + 1
+
+    #pi_dim = images.shape[1]
 
     x = numpy.zeros((maxlen_x, n_samples)).astype('int64')
     y = numpy.zeros((maxlen_y, n_samples)).astype('int64')
+    #pi = numpy.zeros((maxlen_pi, n_samples, pi_dim)).astype('float32')
     x_mask = numpy.zeros((maxlen_x, n_samples)).astype('float32')
     y_mask = numpy.zeros((maxlen_y, n_samples)).astype('float32')
+    #pi_mask = numoy.zeros((maxlen_pi, n_samples)).astype('float32')
+
     for idx, [s_x, s_y] in enumerate(zip(seqs_x, seqs_y)):
         x[:lengths_x[idx], idx] = s_x
         x_mask[:lengths_x[idx]+1, idx] = 1.
@@ -422,6 +429,7 @@ def variation_layer(tparams, ctx_means, options, prefix='variation', ctx_y_means
     
     #Compute the KL objective
     kl_cost = 0
+
     epsilon = numpy.finfo(numpy.float32).eps
     if training:
         kl = (pri_log_sigma - post_log_sigma) + ((post_sigma**2) + ((post_mu - pri_mu)**2)) / (epsilon + 2 * (pri_sigma**2)) - 0.5
@@ -728,6 +736,7 @@ def build_model(tparams, options, training=True):
     y = tensor.matrix('y', dtype='int64')
     y_mask = tensor.matrix('y_mask', dtype='float32')
     pi = tensor.matrix('pi', dtype='float32')
+    #pi_mask = tensor.matrix('pi_mask', dtyoe='float32')
 
     # for the backward rnn, we just need to invert x and x_mask
     xr = x[::-1]
@@ -737,8 +746,10 @@ def build_model(tparams, options, training=True):
 
     n_timesteps = x.shape[0]
     n_timesteps_trg = y.shape[0]
+    #n_timesteps_img = pi.shape[0]
     n_samples = x.shape[1]
 
+    #pi_dim = pi.shape[2]
     
     # word embedding for forward rnn (source)
     emb = tparams['Wemb'][x.flatten()]
@@ -857,7 +868,10 @@ def build_sampler(tparams, options, trng, use_noise):
     pi = tensor.matrix('pi', dtype='float32')
 
     n_timesteps = x.shape[0]
+    n_timesteps_pi = pi.shape[0]
     n_samples = x.shape[1]
+
+    pi_dim = pi.shape[2]
 
     # word embedding (source), forward and backward
     emb = tparams['Wemb'][x.flatten()]
