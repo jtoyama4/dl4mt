@@ -12,3 +12,4 @@ script/meteor-1.5.tar.gz
 meteor-1.5/
 *.png
 best_model/
+*~
