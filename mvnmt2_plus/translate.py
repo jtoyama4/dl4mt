@@ -63,7 +63,7 @@ def translate_model(queue, rqueue, pid, model, options, k, normalize, n_best):
     return
 
 
-def main(model, dictionary, dictionary_target, source_file, image_file, saveto, k=5,
+def main(model, dictionary, dictionary_target, source_file, image_file, rcnn_feats, rcnn_class, saveto, k=5,
          normalize=False, n_process=5, chr_level=False, n_best=1):
 
     # load model model_options
@@ -98,6 +98,19 @@ def main(model, dictionary, dictionary_target, source_file, image_file, saveto, 
             args=(queue, rqueue, midx, model, options, k, normalize, n_best))
         processes[midx].start()
 
+    def get_index(image_basedir,cls,top_n):
+        with open(os.path.join(image_basedir,cls.strip()),'r') as f:
+            result = []
+            idx_result = []
+            line = f.readlines()
+            for idx,c in enumerate(line):
+                if idx==top_n:
+                    break
+                if c not in result:
+                    result.append(c)
+                    idx_result.append(idx)
+        return idx_result
+
     # utility function
     def _seqs2words(caps):
         capsw = []
@@ -110,11 +123,11 @@ def main(model, dictionary, dictionary_target, source_file, image_file, saveto, 
             capsw.append(' '.join(ww))
         return capsw
 
-    def _send_jobs(fname,image_f):
-        with open(fname, 'r') as f:
+    def _send_jobs(fname,image_f,rcnn_feats,rcnn_class,image_basedir):
+        with open(fname, 'r') as f, open(rcnn_feats, 'r') as f1, open(rcnn_class, 'r') as f2:
             idx = 0
             images = numpy.load(image_f)
-            for line,image in zip(f,images):
+            for line,rcnn_path,cls_path,image in zip(f,f1,f2,images):
                 if chr_level:
                     words = list(line.decode('utf-8').strip())
                 else:
@@ -122,7 +135,11 @@ def main(model, dictionary, dictionary_target, source_file, image_file, saveto, 
                 x = map(lambda w: word_dict[w] if w in word_dict else 1, words)
                 x = map(lambda ii: ii if ii < options['n_words'] else 1, x)
                 x += [0]
-                queue.put((idx, x, image.reshape((1,4096))))
+                image = image[numpy.newaxis,:]
+                idx = get_index(image_basedir,cls,1)
+                rcnn = numpy.load(os.path.join(image_basedir,rcnn_path.strip()))[idx]
+                pi = numpy.concatenate((image,rcnn), axis=0)
+                queue.put((idx, x, pi))
                 idx += 1
         return idx
                 
@@ -179,10 +196,13 @@ if __name__ == "__main__":
     parser.add_argument('dictionary_target', type=str)
     parser.add_argument('source', type=str)
     parser.add_argument('image')
+    parser.add_argument('rcnn_feats', type=str)
+    parser.add_argument('rcnn_class', type=str)
+    parser.add_argument('image_dir',default='../flickr30k/'
     parser.add_argument('saveto', type=str)
 
     args = parser.parse_args()
 
-    main(args.model, args.dictionary, args.dictionary_target, args.source,args.image,
+    main(args.model, args.dictionary, args.dictionary_target, args.source,args.image,args.rcnn_feats,args.rcnn_class,args.image_dir,
          args.saveto, k=args.k, normalize=args.n, n_process=args.p,
          chr_level=args.c, n_best=args.b)

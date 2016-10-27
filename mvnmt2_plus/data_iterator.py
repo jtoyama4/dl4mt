@@ -46,6 +46,19 @@ class TextIterator:
         self.image_list.seek(0)
         self.count = 0
 
+    def get_index(self,cls,top_n):
+        with open(os.path.join(self.image_basedir,cls.strip()),'r') as f:
+            result = []
+            idx_result = []
+            line = f.readlines()
+            for idx,c in enumerate(line):
+                if idx==top_n:
+                    break
+                if c not in result:
+                    result.append(c)
+                    idx_result.append(idx)
+        return idx_result
+
     def next(self):
         if self.end_of_data:
             self.end_of_data = False
@@ -83,6 +96,9 @@ class TextIterator:
                 if len(ss) > self.maxlen and len(tt) > self.maxlen:
                     self.count += 1
                     continue
+
+                cls = self.class_txt.readline()
+                idx = self.get_index(cls,1)
                 fc7_global = self.global_fc7[self.count]
                 fc7_global = fc7_global[numpy.newaxis,:]
                 ii = numpy.load(os.path.join(self.image_basedir, self.image_list.readline().strip()))
