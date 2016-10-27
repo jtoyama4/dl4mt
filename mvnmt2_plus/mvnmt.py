@@ -216,7 +216,7 @@ def prepare_data(seqs_x, seqs_y, images=None, maxlen=None, n_words_src=30000,
         y[:lengths_y[idx], idx] = s_y
         y_mask[:lengths_y[idx]+1, idx] = 1.
         pi[:lengths_pi[idx], idx, :] = p
-        pi_mask[:lengths_pi[idx], idx] = 1
+        pi_mask[:lengths_pi[idx]+1, idx] = 1
 
     return x, x_mask, y, y_mask, pi, pi_mask
 
@@ -895,7 +895,7 @@ def build_sampler(tparams, options, trng, use_noise):
 
     # image feature extraction
     pic = get_layer('image')[1](tparams, pi.reshape([n_timesteps_pi*n_samples,pi_dim]), options, prefix='image')
-    pic = pic.reshape([n_timesteps_pi, n_samples, pi_dim])
+    pic = pic.reshape([n_timesteps_pi, n_samples, options['dim_pic']])
     pic = (pic * pi_mask[:,:,None]).sum(0) / pi_mask.sum(0)[:, None]
 
     # concatenate forward and backward rnn hidden states
@@ -966,14 +966,15 @@ def build_sampler(tparams, options, trng, use_noise):
 
 # generate sample, either with stochastic sampling or beam search. Note that,
 # this function iteratively calls f_init and f_next functions.
-def gen_sample(tparams, f_init, f_next, x, pi, options, trng=None, k=1, maxlen=30,
+def gen_sample(tparams, f_init, f_next, x, pi, pi_mask, options, trng=None, k=1, maxlen=30,
                stochastic=True, argmax=False):
 
     # k is the beam size we have
     if k > 1:
         assert not stochastic, \
             'Beam search does not support stochastic sampling'
-
+    #pi = pi.sum(0) / pi_mask.sum(0)
+    
     sample = []
     sample_score = []
     if stochastic:
@@ -987,7 +988,7 @@ def gen_sample(tparams, f_init, f_next, x, pi, options, trng=None, k=1, maxlen=3
     hyp_states = []
 
     # get initial state of decoder rnn and encoder context
-    ret = f_init(x,pi)
+    ret = f_init(x,pi,pi_mask)
     next_state, ctx0, pic = ret[0], ret[1], ret[2]
     next_w = -1 * numpy.ones((1,)).astype('int64')  # bos indicator
 
@@ -1453,7 +1454,7 @@ def train(dim_word=100,  # word vector dimensionality
                 for jj in xrange(numpy.minimum(5, x.shape[1])):
                     stochastic = True
                     sample, score = gen_sample(tparams, f_init, f_next,
-                                               x[:, jj][:, None],pi[jj, :][None,:],
+                                               x[:, jj][:, None],pi[:, jj, :][:,None],pi_mask[:,jj][:,None],
                                                model_options, trng=trng, k=1,
                                                maxlen=30,
                                                stochastic=stochastic,
