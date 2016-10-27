@@ -63,7 +63,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     main(0, {
-        'model': ['%s/model_vnmt_special_fine.npz' % modeldir],
+        'model': ['%s/model_vnmt_hyper_fine.npz' % modeldir],
         'fine_tuning_load':['%s/model_nmt.npz' % finetunedir],
         'validdir': validdir,
         'scriptdir': scriptdir,

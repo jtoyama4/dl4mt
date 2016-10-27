@@ -214,7 +214,7 @@ def prepare_data(seqs_x, seqs_y, images=None, maxlen=None, n_words_src=30000,
         y[:lengths_y[idx], idx] = s_y
         y_mask[:lengths_y[idx]+1, idx] = 1.
         pi[:lengths_pi[idx], idx,:] = p
-        pi_mask[:lengths_pi[idx], idx] = 1.
+        pi_mask[:lengths_pi[idx]+1, idx] = 1.
 
     return x, x_mask, y, y_mask, pi, pi_mask
 
@@ -1258,12 +1258,12 @@ def train(dim_word=100,  # word vector dimensionality
             model_options["dimv"]=dimv
  
     print 'Loading data'
-    train = TextIterator(datasets[0], datasets[1], datasets[2],datasets[3],
+    train = TextIterator(datasets[0], datasets[1], datasets[2],datasets[3],datasets[4],
                          dictionaries[0], dictionaries[1],
                          n_words_source=n_words_src, n_words_target=n_words,
                          batch_size=batch_size,
                          maxlen=maxlen)
-    valid = TextIterator(valid_datasets[0], valid_datasets[1], valid_datasets[2], valid_datasets[3],
+    valid = TextIterator(valid_datasets[0], valid_datasets[1], valid_datasets[2], valid_datasets[3],valid_datasets[4],
                          dictionaries[0], dictionaries[1],
                          n_words_source=n_words_src, n_words_target=n_words,
                          batch_size=valid_batch_size,

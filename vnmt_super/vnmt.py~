@@ -663,6 +663,15 @@ def init_params(options):
                                               dim=options['dim'])
 
     params = get_layer(options['encoder'])[0](options, params,
+                                              prefix='encoder_x',
+                                              nin=options['dim_word'],
+                                              dim=options['dim'])
+    params = get_layer(options['encoder'])[0](options, params,
+                                              prefix='encoder_r_x',
+                                              nin=options['dim_word'],
+                                              dim=options['dim'])
+
+    params = get_layer(options['encoder'])[0](options, params,
                                               prefix='encoder_y',
                                               nin=options['dim_word'],
                                               dim=options['dim'])
@@ -741,12 +750,20 @@ def build_model(tparams, options, training=True):
                                              prefix='encoder_r',
                                              mask=xr_mask)
 
+    projx = get_layer(options['encoder'])[1](tparams, emb, options,
+                                            prefix='encoder_x',
+                                            mask=x_mask)
+    projyr = get_layer(options['encoder'])[1](tparams, embr, options,
+                                             prefix='encoder_r_x',
+                                             mask=xr_mask)
+
     # word embedding for forward rnn (target)
     emby = tparams['Wemb_y'][y.flatten()]
     emby= emby.reshape([n_timesteps_trg, n_samples, options['dim_word']])
     projy = get_layer(options['encoder'])[1](tparams, emby, options,
                                             prefix='encoder_y',
                                             mask=y_mask)
+
 
     #word embedding for backward rnn (target)
     embyr = tparams['Wemb_y'][yr.flatten()]
@@ -757,10 +774,11 @@ def build_model(tparams, options, training=True):
 
     # context will be the concatenation of forward and backward rnns
     ctx = concatenate([proj[0], projr[0][::-1]], axis=proj[0].ndim-1)
+    ctx_x = concatenate([projx[0], projxr[0][::-1]], axis=projx[0].ndim-1)
     ctx_y = concatenate([projy[0], projry[0][::-1]], axis=projy[0].ndim-1)
     
     # mean of the context (across time) will be used to initialize decoder rnn
-    ctx_mean = (ctx * x_mask[:, :, None]).sum(0) / x_mask.sum(0)[:, None]
+    ctx_mean = (ctx_x * x_mask[:, :, None]).sum(0) / x_mask.sum(0)[:, None]
     ctx_y_mean = (ctx_y * y_mask[:, :, None]).sum(0) / y_mask.sum(0)[:, None]
     
     # or you can use the last state of forward + backward encoder rnns

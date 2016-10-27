@@ -6,7 +6,7 @@ import argparse
 print "This is VNMT"
 
 basedir = osp.join(osp.dirname(osp.abspath(__file__)), "../")
-modeldir = osp.join(basedir, "models", "vnmt")
+modeldir = osp.join(basedir, "models", "vnmt_no_finetune")
 finetunedir = osp.join(basedir, "models", "nmt")
 validdir = osp.join(modeldir, "valid")
 scriptdir = osp.join(basedir, "script")
@@ -63,7 +63,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     main(0, {
-        'model': ['%s/model_vnmt_special_fine.npz' % modeldir],
+        'model': ['%s/model_vnmt_no_finetune.npz' % modeldir],
         'fine_tuning_load':['%s/model_nmt.npz' % finetunedir],
         'validdir': validdir,
         'scriptdir': scriptdir,
