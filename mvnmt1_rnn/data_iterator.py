@@ -1,6 +1,7 @@
 import cPickle as pkl
 import gzip
 import numpy
+import os.path
 
 def fopen(filename, mode='r'):
     if filename.endswith('.gz'):
@@ -10,7 +11,7 @@ def fopen(filename, mode='r'):
 
 class TextIterator:
     """Simple Bitext iterator."""
-    def __init__(self, source, target,image,
+    def __init__(self, source, target,image,global_fc7,class_txt,
                  source_dict, target_dict,
                  batch_size=128,
                  maxlen=100,
@@ -18,7 +19,10 @@ class TextIterator:
                  n_words_target=-1):
         self.source = fopen(source, 'r')
         self.target = fopen(target, 'r')
-        self.image = numpy.load(image)
+        self.class_txt = fopen(class_txt, 'r')
+        self.image_list = fopen(image, 'r')
+        self.image_basedir = os.path.dirname(image)
+        self.global_fc7 = numpy.load(global_fc7)
         with open(source_dict, 'rb') as f:
             self.source_dict = pkl.load(f)
         with open(target_dict, 'rb') as f:
@@ -40,7 +44,22 @@ class TextIterator:
     def reset(self):
         self.source.seek(0)
         self.target.seek(0)
+        self.class_txt.seek(0)
+        self.image_list.seek(0)
         self.count = 0
+
+    def get_index(self,cls,top_n):
+        with open(os.path.join(self.image_basedir,cls.strip()),'r') as f:
+            result = []
+            idx_result = []
+            line = f.readlines()
+            for idx,c in enumerate(line):
+                if idx==top_n:
+                    break
+                if c not in result:
+                    result.append(c)
+                    idx_result.append(idx)
+        return idx_result
 
     def next(self):
         if self.end_of_data:
@@ -65,7 +84,7 @@ class TextIterator:
                       for w in ss]
                 if self.n_words_source > 0:
                     ss = [w if w < self.n_words_source else 1 for w in ss]
-
+                
                 # read from source file and map to word index
                 tt = self.target.readline()
                 if tt == "":
@@ -80,9 +99,17 @@ class TextIterator:
                     self.count += 1
                     continue
                 
+                # read image
+                # image shape : (num_of_objects, image_feature)
+                cls = self.class_txt.readline()
+                idx = self.get_index(cls,4)
+                fc7_global = self.global_fc7[self.count]
+                fc7_global = fc7_global[numpy.newaxis,:]
+                ii = numpy.load(os.path.join(self.image_basedir,self.image_list.readline().strip()))[idx]
+                ii = numpy.concatenate((fc7_global,ii),axis=0)
                 source.append(ss)
                 target.append(tt)
-                image.append(self.image[self.count])
+                image.append(ii)
 
                 self.count += 1
 

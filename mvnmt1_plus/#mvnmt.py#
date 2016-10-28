@@ -689,14 +689,6 @@ def init_params(options):
                                               prefix='encoder_r',
                                               nin=options['dim_word'],
                                               dim=options['dim'])
-    params = get_layer(options['encoder'])[0](options, params,
-                                              prefix='encoder_rcnn',
-                                              nin=options['dim_pic'],
-                                              dim=options['dim_pic'] / 2)
-    params = get_layer(options['encoder'])[0](options, params,
-                                              prefix='encoder_rcnn_r',
-                                              nin=options['dim_pic'],
-                                              dim=options['dim_pic'] / 2)
    
     ctxdim = 2 * options['dim']
     
@@ -754,13 +746,12 @@ def build_model(tparams, options, training=True):
     xr_mask = x_mask[::-1]
     yr = y[::-1]
     yr_mask = y_mask[::-1]
-    pir = pi[::-1]
-    pi_mask_r = pi_mask[::-1]
 
     n_timesteps = x.shape[0]
     n_timesteps_trg = y.shape[0]
     n_timesteps_pi = pi.shape[0]
     n_samples = x.shape[1]
+    
     if training:
         pi_dim = pi.shape[2]
 
@@ -794,16 +785,9 @@ def build_model(tparams, options, training=True):
     
     # image feature extraction
     if training:
-        embpi = get_layer('image')[1](tparams, pi.reshape([n_timesteps_pi*n_samples,pi_dim]), options, prefix='image')
-        embpi = embpi.reshape([n_timesteps_pi, n_samples, options['dim_pic']])
-        projpi = get_layer(options['encoder'])[1](tparams, embpi, options, prefix='encoder_rcnn', mask=pi_mask)
-
-        embpir = get_layer('image')[1](tparams, pir.reshape([n_timesteps_pi*n_samples,pi_dim]), options, prefix='image')
-        embpir = embpir.reshape([n_timesteps_pi, n_samples, options['dim_pic']])
-        projpir = get_layer(options['encoder'])[1](tparams, embpir, options, prefix='encoder_rcnn_r', mask=pi_mask_r)
-        
-        ctx_pi = concatenate([projpi[0], projpir[0][::-1]], axis=projpi[0].ndim-1)
-        pic = (ctx_pi * pi_mask[:, :, None]).sum(0) / pi_mask.sum(0)[:, None]
+        pic = get_layer('image')[1](tparams, pi.reshape([n_timesteps_pi*n_samples,pi_dim]), options, prefix='image')
+        pic = pic.reshape([n_timesteps_pi, n_samples, options['dim_pic']])
+        pic = (pic * pi_mask[:,:,None]).sum(0) / pi_mask.sum(0)[:, None]
 
     # context will be the concatenation of forward and backward rnns
     ctx = concatenate([proj[0], projr[0][::-1]], axis=proj[0].ndim-1)
@@ -813,7 +797,6 @@ def build_model(tparams, options, training=True):
     ctx_mean = (ctx * x_mask[:, :, None]).sum(0) / x_mask.sum(0)[:, None]
     ctx_y_mean = (ctx_y * y_mask[:, :, None]).sum(0) / y_mask.sum(0)[:, None]
     
-
     # or you can use the last state of forward + backward encoder rnns
     # ctx_mean = concatenate([proj[0][-1], projr[0][-1]], axis=proj[0].ndim-2)
     
@@ -898,13 +881,12 @@ def build_sampler(tparams, options, trng, use_noise):
     emb = emb.reshape([n_timesteps, n_samples, options['dim_word']])
     embr = tparams['Wemb'][xr.flatten()]
     embr = embr.reshape([n_timesteps, n_samples, options['dim_word']])
-    
+
     # encoder
     proj = get_layer(options['encoder'])[1](tparams, emb, options,
                                             prefix='encoder')
     projr = get_layer(options['encoder'])[1](tparams, embr, options,
                                              prefix='encoder_r')
-    
 
     # concatenate forward and backward rnn hidden states
     ctx = concatenate([proj[0], projr[0][::-1]], axis=proj[0].ndim-1)
@@ -1081,7 +1063,7 @@ def pred_probs(f_log_probs, prepare_data, options, iterator, verbose=True):
 
         x, x_mask, y, y_mask, _, _ = prepare_data(x, y,
                                             n_words_src=options['n_words_src'],
-                                                  n_words=options['n_words'], dim_pi=options['dim_pi'])
+                                                  n_words=options['n_words'],dim_pi=options['dim_pi'])
 
         pprobs = f_log_probs(x, x_mask, y, y_mask)
         for pp in pprobs:
@@ -1281,7 +1263,7 @@ def train(dim_word=100,  # word vector dimensionality
                          n_words_source=n_words_src, n_words_target=n_words,
                          batch_size=batch_size,
                          maxlen=maxlen)
-    valid = TextIterator(valid_datasets[0], valid_datasets[1], valid_datasets[2],valid_datasets[3],valid_datasets[4],
+    valid = TextIterator(valid_datasets[0], valid_datasets[1], valid_datasets[2], valid_datasets[3],valid_datasets[4],
                          dictionaries[0], dictionaries[1],
                          n_words_source=n_words_src, n_words_target=n_words,
                          batch_size=valid_batch_size,
@@ -1301,7 +1283,7 @@ def train(dim_word=100,  # word vector dimensionality
     tparams = init_tparams(params)
 
     trng, use_noise, \
-        x, x_mask, y, y_mask, pi, pi_mask,\
+        x, x_mask, y, y_mask, pi,pi_mask,\
         opt_ret, \
         cost, kl_cost = \
         build_model(tparams, model_options)
