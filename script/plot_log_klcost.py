@@ -10,7 +10,7 @@ def main(log, title, outfile):
     total_cost = []
     cost = []
     klcost = []
-    pat = re.compile(r"Epoch\s+(\d+)\s+Update\s+(\d+)\s+Cost\s+(.*)\s+UD\s+(.*)kl-cost\s+(\d+\.\d+)")
+    pat = re.compile(r"Epoch\s+(\d+)\s+Update\s+(\d+)\s+Cost\s+(.*)\s+UD\s+(.*)kl_cost\s+(\d+\.\d+)")
 
     with open(log, "r") as f:
         for l in f.readlines():
