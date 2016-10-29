@@ -136,7 +136,7 @@ def main(model, dictionary, dictionary_target, source_file, image_file, rcnn_fea
                 x = map(lambda ii: ii if ii < options['n_words'] else 1, x)
                 x += [0]
                 image = image[numpy.newaxis,:]
-                idx = get_index(image_basedir,cls,1)
+                idx = get_index(image_basedir,cls,4)
                 rcnn = numpy.load(os.path.join(image_basedir,rcnn_path.strip()))[idx]
                 pi = numpy.concatenate((image,rcnn), axis=0)
                 queue.put((idx, x, pi))
