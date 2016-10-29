@@ -11,6 +11,9 @@ from mvnmt import (build_sampler, gen_sample, load_params,
 
 from multiprocessing import Process, Queue
 
+import os
+import os.path as osp
+
 
 def translate_model(queue, rqueue, pid, model, options, k, normalize, n_best):
 
@@ -29,10 +32,10 @@ def translate_model(queue, rqueue, pid, model, options, k, normalize, n_best):
     # word index
     f_init, f_next = build_sampler(tparams, options, trng, use_noise)
 
-    def _translate(seq, pi):
+    def _translate(seq, pi, pi_mask):
         # sample given an input sequence and obtain scores
         sample, score = gen_sample(tparams, f_init, f_next,
-                                   numpy.array(seq).reshape([len(seq), 1]),pi,
+                numpy.array(seq).reshape([len(seq), 1]),pi[:,:,None],pi_mask[:,None],
                                    options, trng=trng, k=k, maxlen=200,
                                    stochastic=False, argmax=False)
 
@@ -54,16 +57,16 @@ def translate_model(queue, rqueue, pid, model, options, k, normalize, n_best):
             print pid, "break!!!"
             break
 
-        idx, x, pi = req[0], req[1], req[2]
+        idx, x, pi, pi_mask = req[0], req[1], req[2], req[3]
         print pid, '-', idx
-        seq, scores = _translate(x, pi)
+        seq, scores = _translate(x, pi, pi_mask)
 
         rqueue.put((idx, seq, scores))
 
     return
 
 
-def main(model, dictionary, dictionary_target, source_file, image_file, rcnn_feats, rcnn_class, saveto, k=5,
+def main(model, dictionary, dictionary_target, source_file, image_file, rcnn_feats, rcnn_class, image_basedir, saveto, k=5,
          normalize=False, n_process=5, chr_level=False, n_best=1):
 
     # load model model_options
@@ -136,10 +139,11 @@ def main(model, dictionary, dictionary_target, source_file, image_file, rcnn_fea
                 x = map(lambda ii: ii if ii < options['n_words'] else 1, x)
                 x += [0]
                 image = image[numpy.newaxis,:]
-                idx = get_index(image_basedir,cls,4)
-                rcnn = numpy.load(os.path.join(image_basedir,rcnn_path.strip()))[idx]
+                idx_ = get_index(image_basedir,cls_path,4)
+                rcnn = numpy.load(os.path.join(image_basedir,rcnn_path.strip()))[idx_]
                 pi = numpy.concatenate((image,rcnn), axis=0)
-                queue.put((idx, x, pi))
+                pi_mask = numpy.ones(len(idx_)+1).astype('float32')
+                queue.put((idx, x, pi, pi_mask))
                 idx += 1
         return idx
                 
@@ -160,7 +164,7 @@ def main(model, dictionary, dictionary_target, source_file, image_file, rcnn_fea
         return trans, scores
 
     print 'Translating ', source_file, '...'
-    n_samples = _send_jobs(source_file, image_file)
+    n_samples = _send_jobs(source_file, image_file,rcnn_feats,rcnn_class,image_basedir )
     trans, scores = _retrieve_jobs(n_samples)
     _finish_processes()
 
@@ -198,7 +202,7 @@ if __name__ == "__main__":
     parser.add_argument('image')
     parser.add_argument('rcnn_feats', type=str)
     parser.add_argument('rcnn_class', type=str)
-    parser.add_argument('image_dir',default='../flickr30k/'
+    parser.add_argument('image_dir', type=str)
     parser.add_argument('saveto', type=str)
 
     args = parser.parse_args()
