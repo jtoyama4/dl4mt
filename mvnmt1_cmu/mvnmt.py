@@ -216,7 +216,7 @@ def prepare_data(seqs_x, seqs_y, images=None, maxlen=None, n_words_src=30000,
         pi[:lengths_pi[idx], idx,:] = p
         pi_mask[:lengths_pi[idx]+1, idx] = 1.
 
-        return x, x_mask, y, y_mask, pi, pi_mask
+    return x, x_mask, y, y_mask, pi, pi_mask
 
 
 # feedforward layer: affine transformation + point-wise nonlinearity
@@ -389,7 +389,7 @@ def param_init_variation(options, params, prefix='variation',
     params[_p(prefix, 'W_pri_sigma')] = W_pri_sigma
     params[_p(prefix, 'W_pri_sigma_b')] = numpy.zeros((dimv,)).astype('float32')
 
-    W_post_pi = numpy.concatenate([norm_weight(dimctx,dimv),norm_weight(dimctx_y,dimv)], axis = 0)
+    W_post_pi = numpy.concatenate([norm_weight(dimctx,dimv),norm_weight(dimctx_y,dimv)], axis=0)
     params[_p(prefix, 'W_post_pi')] = W_post_pi
     params[_p(prefix, 'W_post_pi_b')] = numpy.zeros((dimv,)).astype('float32')
     
@@ -762,7 +762,7 @@ def build_model(tparams, options, training=True):
     if training:
         pic = get_layer('image')[1](tparams, pi.reshape([n_timesteps_pi*n_samples,pi_dim]), options, prefix='image')
         pic = pic.reshape([n_timesteps_pi, n_samples, options['dim_pic']])
-        prcr = pic[::-1]
+        picr = pic[::-1]
         #pic = (pic * pi_mask[:,:,None]).sum(0) / pi_mask.sum(0)[:, None]
 
     
@@ -819,11 +819,11 @@ def build_model(tparams, options, training=True):
     ctx = concatenate([proj[0], projr[0][::-1]], axis=proj[0].ndim-1)
     ctx_mean = (ctx * x_mask[:, :, None]).sum(0) / x_mask.sum(0)[:, None]
     if training:
-        ctx_x = concatenate([projx[0], projrx[0][::-1]], axis=proj[0].ndim-1)
+        ctx_x = concatenate([projx[0], projrx[0][::-1]], axis=projx[0].ndim-1)
         ctx_y = concatenate([projy[0], projry[0][::-1]], axis=projy[0].ndim-1)
     
         # mean of the context (across time) will be used to initialize decoder rnn
-        ctx_x_mean = (ctx_x * cmu1_mask[:, :, None]).sum(0) / cmu_mask.sum(0)[:, None]
+        ctx_x_mean = (ctx_x * cmu_mask[:, :, None]).sum(0) / cmu_mask.sum(0)[:, None]
         ctx_y_mean = (ctx_y * cmu_mask_y[:, :, None]).sum(0) / cmu_mask_y.sum(0)[:, None]
     
         # or you can use the last state of forward + backward encoder rnns
@@ -1416,7 +1416,7 @@ def train(dim_word=100,  # word vector dimensionality
             x, x_mask, y, y_mask, pi, pi_mask = prepare_data(x, y, images=pi, maxlen=maxlen,
                                                 n_words_src=n_words_src,
                                                              n_words=n_words,dim_pi=dim_pi)
-
+            
             if x is None:
                 print 'Minibatch with zero sample under length ', maxlen
                 uidx -= 1
@@ -1434,6 +1434,8 @@ def train(dim_word=100,  # word vector dimensionality
 
             # check for bad numbers, usually we remove non-finite elements
             # and continue training - but not done here
+            if numpy.isnan(cost):
+                print "koreha nan"
             if numpy.isnan(cost) or numpy.isinf(cost):
                 print 'NaN detected'
                 return 1., 1., 1.
