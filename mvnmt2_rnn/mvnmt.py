@@ -892,7 +892,9 @@ def build_sampler(tparams, options, trng, use_noise):
     x = tensor.matrix('x', dtype='int64')
     xr = x[::-1]
     pi = tensor.tensor3('pi', dtype='float32')
+    pir = pi[::-1]
     pi_mask = tensor.matrix('pi_mask', dtype='float32')
+    pi_mask_r = pi_mask[::-1]
 
     n_timesteps = x.shape[0]
     n_timesteps_pi = pi.shape[0]
@@ -913,9 +915,16 @@ def build_sampler(tparams, options, trng, use_noise):
                                              prefix='encoder_r')
 
     # image feature extraction
-    pic = get_layer('image')[1](tparams, pi.reshape([n_timesteps_pi*n_samples,pi_dim]), options, prefix='image')
-    pic = pic.reshape([n_timesteps_pi, n_samples, options['dim_pic']])
-    pic = (pic * pi_mask[:,:,None]).sum(0) / pi_mask.sum(0)[:, None]
+    embpi = get_layer('image')[1](tparams, pi.reshape([n_timesteps_pi*n_samples,pi_dim]), options, prefix='image')
+    embpi = embpi.reshape([n_timesteps_pi, n_samples, options['dim_pic']])
+    projpi = get_layer(options['encoder'])[1](tparams, embpi, options, prefix='encoder_rcnn', mask=pi_mask)
+
+    embpir = get_layer('image')[1](tparams, pir.reshape([n_timesteps_pi*n_samples,pi_dim]), options, prefix='image')
+    embpir = embpir.reshape([n_timesteps_pi, n_samples, options['dim_pic']])
+    projpir = get_layer(options['encoder'])[1](tparams, embpir, options, prefix='encoder_rcnn_r', mask=pi_mask_r)
+        
+    ctx_pi = concatenate([projpi[0], projpir[0][::-1]], axis=projpi[0].ndim-1)
+    pic = (ctx_pi * pi_mask[:, :, None]).sum(0) / pi_mask.sum(0)[:, None]
 
     # concatenate forward and backward rnn hidden states
     ctx = concatenate([proj[0], projr[0][::-1]], axis=proj[0].ndim-1)
