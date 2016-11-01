@@ -67,6 +67,7 @@ def init_tparams(params):
 def load_params(path, params):
     pp = numpy.load(path)
     for kk, vv in params.iteritems():
+        print kk
         if kk not in pp:
             warnings.warn('%s is not in the archive' % kk)
             continue
@@ -160,51 +161,64 @@ def concatenate(tensor_list, axis=0):
 
 # batch preparation
 def prepare_data(seqs_x, seqs_y, images=None, maxlen=None, n_words_src=30000,
-                 n_words=30000):
+                 n_words=30000,dim_pi=4096):
     # x: a list of sentences
+    assert images
     lengths_x = [len(s) for s in seqs_x]
     lengths_y = [len(s) for s in seqs_y]
-    if not images:
-        images = [0 for s in seqs_x]
+    lengths_pi = [len(i) for i in images]
+    
 
     if maxlen is not None:
         new_seqs_x = []
         new_seqs_y = []
+        new_images = []
         new_lengths_x = []
         new_lengths_y = []
-        new_images = []
+        new_lengths_pi = []
 
-        for l_x, s_x, l_y, s_y, p in zip(lengths_x, seqs_x, lengths_y, seqs_y, images):
+        for l_x, s_x, l_y, s_y, l_p, p in zip(lengths_x, seqs_x, lengths_y, seqs_y, lengths_pi, images):
             if l_x < maxlen and l_y < maxlen:
                 new_seqs_x.append(s_x)
                 new_lengths_x.append(l_x)
                 new_seqs_y.append(s_y)
                 new_lengths_y.append(l_y)
                 new_images.append(p)
+                new_lengths_pi.append(l_p)
         lengths_x = new_lengths_x
         seqs_x = new_seqs_x
         lengths_y = new_lengths_y
         seqs_y = new_seqs_y
+        lengths_pi = new_lengths_pi
         images = new_images
+        
 
         if len(lengths_x) < 1 or len(lengths_y) < 1:
-            return None, None, None, None
+            return None, None, None, None, None, None
 
     n_samples = len(seqs_x)
     maxlen_x = numpy.max(lengths_x) + 1
     maxlen_y = numpy.max(lengths_y) + 1
+    maxlen_pi = numpy.max(lengths_pi) + 1
+
+    pi_dim = dim_pi
 
     x = numpy.zeros((maxlen_x, n_samples)).astype('int64')
     y = numpy.zeros((maxlen_y, n_samples)).astype('int64')
+    pi = numpy.zeros((maxlen_pi, n_samples, pi_dim)).astype('float32')
     x_mask = numpy.zeros((maxlen_x, n_samples)).astype('float32')
     y_mask = numpy.zeros((maxlen_y, n_samples)).astype('float32')
-    for idx, [s_x, s_y] in enumerate(zip(seqs_x, seqs_y)):
+    pi_mask = numpy.zeros((maxlen_pi, n_samples)).astype('float32')
+
+    for idx, [s_x, s_y, p] in enumerate(zip(seqs_x, seqs_y, images)):
         x[:lengths_x[idx], idx] = s_x
         x_mask[:lengths_x[idx]+1, idx] = 1.
         y[:lengths_y[idx], idx] = s_y
         y_mask[:lengths_y[idx]+1, idx] = 1.
+        pi[:lengths_pi[idx], idx, :] = p
+        pi_mask[:lengths_pi[idx]+1, idx] = 1
 
-    return x, x_mask, y, y_mask, images
+    return x, x_mask, y, y_mask, pi, pi_mask
 
 
 # feedforward layer: affine transformation + point-wise nonlinearity
@@ -365,9 +379,9 @@ def param_init_variation(options, params, prefix='variation',
     if dim_pic is None:
         dim_pic = options['dim_pic']
 
-    W_pri = norm_weight(dimctx,dimv)
-    params[_p(prefix, 'W_pri')] = W_pri
-    params[_p(prefix, 'W_pri_b')] = numpy.zeros((dimv,)).astype('float32')
+    W_pri_pi = numpy.concatenate([norm_weight(dimctx,dimv), norm_weight(dim_pic,dimv)], axis=0)
+    params[_p(prefix, 'W_pri_pi')] = W_pri_pi
+    params[_p(prefix, 'W_pri_pi_b')] = numpy.zeros((dimv,)).astype('float32')
     
     W_pri_mu = norm_weight(dimv,dimv)
     params[_p(prefix, 'W_pri_mu')] = W_pri_mu
@@ -400,11 +414,12 @@ def variation_layer(tparams, ctx_means, options, prefix='variation', ctx_y_means
         assert pic
     else:
         assert not ctx_y_means
-        assert not pic
+        assert pic
+
     nsteps = ctx_means.shape[0]
 
     # prepare h_z' for both posterior and prior
-    pri_h = tensor.tanh(tensor.dot(ctx_means, tparams[_p(prefix, 'W_pri')]) + tparams[_p(prefix, 'W_pri_b')])
+    pri_h = tensor.tanh(tensor.dot(concatenate([ctx_means, pic], axis=1), tparams[_p(prefix, 'W_pri_pi')]) + tparams[_p(prefix, 'W_pri_pi_b')])
     if training:
         post_h = tensor.tanh(tensor.dot(concatenate([ctx_means, ctx_y_means, pic],axis=1), tparams[_p(prefix, 'W_post_pi')]) + tparams[_p(prefix, 'W_post_pi_b')])
     
@@ -419,9 +434,10 @@ def variation_layer(tparams, ctx_means, options, prefix='variation', ctx_y_means
     
     #Compute the KL objective
     kl_cost = 0
-    epsilon = 0.00001
+
+    epsilon = numpy.finfo(numpy.float32).eps
     if training:
-        kl = (pri_log_sigma - post_log_sigma) + ((post_sigma**2) + ((post_mu - pri_mu)**2)) / (epsilon + 2 * pri_sigma**2) - 0.5
+        kl = (pri_log_sigma - post_log_sigma) + ((post_sigma**2) + ((post_mu - pri_mu)**2)) / (epsilon + 2 * (pri_sigma**2)) - 0.5
         kl_cost = tensor.sum(kl)
 
     def _gaussian_noise_step(mu, sigma, noise, z, add_noise=True):
@@ -574,7 +590,6 @@ def gru_cond_layer(tparams, state_below, options, prefix='gru',
                     U_nl, Ux_nl, b_nl, bx_nl):
         preact1 = tensor.dot(h_, U)
         preact1 += x_
-        #preact1 += tensor.dot(he, Vc)
         preact1 = tensor.nnet.sigmoid(preact1)
 
         r1 = _slice(preact1, 0, dim)
@@ -583,7 +598,6 @@ def gru_cond_layer(tparams, state_below, options, prefix='gru',
         preactx1 = tensor.dot(h_, Ux)
         preactx1 *= r1
         preactx1 += xx_
-        #preactx1 += tensor.dot(he, Vcx)
 
         h1 = tensor.tanh(preactx1)
 
@@ -677,6 +691,15 @@ def init_params(options):
                                               prefix='encoder_r',
                                               nin=options['dim_word'],
                                               dim=options['dim'])
+
+    params = get_layer(options['encoder'])[0](options, params,
+                                              prefix='encoder_rcnn',
+                                              nin=options['dim_pic'],
+                                              dim=options['dim_pic'] / 2)
+    params = get_layer(options['encoder'])[0](options, params,
+                                              prefix='encoder_rcnn_r',
+                                              nin=options['dim_pic'],
+                                              dim=options['dim_pic'] / 2)
    
     ctxdim = 2 * options['dim']
     
@@ -726,7 +749,7 @@ def build_model(tparams, options, training=True):
     x_mask = tensor.matrix('x_mask', dtype='float32')
     y = tensor.matrix('y', dtype='int64')
     y_mask = tensor.matrix('y_mask', dtype='float32')
-    pi = tensor.tensor('pi', dtype='float32')
+    pi = tensor.tensor3('pi', dtype='float32')
     pi_mask = tensor.matrix('pi_mask', dtype='float32')
 
     # for the backward rnn, we just need to invert x and x_mask
@@ -734,12 +757,15 @@ def build_model(tparams, options, training=True):
     xr_mask = x_mask[::-1]
     yr = y[::-1]
     yr_mask = y_mask[::-1]
+    pir = pi[::-1]
+    pi_mask_r = pi_mask[::-1]
 
     n_timesteps = x.shape[0]
     n_timesteps_trg = y.shape[0]
     n_timesteps_pi = pi.shape[0]
     n_samples = x.shape[1]
 
+    pi_dim = pi.shape[2]
     
     # word embedding for forward rnn (source)
     emb = tparams['Wemb'][x.flatten()]
@@ -770,9 +796,17 @@ def build_model(tparams, options, training=True):
                                              mask=yr_mask)
     
     # image feature extraction
-    pic = get_layer('image')[1](tparams, pi.reshape([None,4096]), options, prefix='image')
-    pic = pic.reshape([n_timesteps_pi, n_sample, None])
-    pic = (pic * pi_mask[:,:,None]).sum(0) / pi_mask.sum(0)[:, None]
+
+    embpi = get_layer('image')[1](tparams, pi.reshape([n_timesteps_pi*n_samples,pi_dim]), options, prefix='image')
+    embpi = embpi.reshape([n_timesteps_pi, n_samples, options['dim_pic']])
+    projpi = get_layer(options['encoder'])[1](tparams, embpi, options, prefix='encoder_rcnn', mask=pi_mask)
+
+    embpir = get_layer('image')[1](tparams, pir.reshape([n_timesteps_pi*n_samples,pi_dim]), options, prefix='image')
+    embpir = embpir.reshape([n_timesteps_pi, n_samples, options['dim_pic']])
+    projpir = get_layer(options['encoder'])[1](tparams, embpir, options, prefix='encoder_rcnn_r', mask=pi_mask_r)
+        
+    ctx_pi = concatenate([projpi[0], projpir[0][::-1]], axis=projpi[0].ndim-1)
+    pic = (ctx_pi * pi_mask[:, :, None]).sum(0) / pi_mask.sum(0)[:, None]
 
     # context will be the concatenation of forward and backward rnns
     ctx = concatenate([proj[0], projr[0][::-1]], axis=proj[0].ndim-1)
@@ -788,7 +822,6 @@ def build_model(tparams, options, training=True):
     #variation
     if not training:
         ctx_y_mean = None
-        pic = None
 
     sample_z,kl_cost = get_layer('variation')[1](tparams, ctx_mean,options,prefix='variation',ctx_y_means=ctx_y_mean,pic=pic,training=training)
     
@@ -849,29 +882,40 @@ def build_model(tparams, options, training=True):
     cost = (cost * y_mask).sum(0)
 
     if not training:
-        return trng, use_noise, x, x_mask, y, y_mask, opt_ret, cost
+        return trng, use_noise, x, x_mask, y, y_mask, pi, pi_mask, opt_ret, cost
 
-    return trng, use_noise, x, x_mask, y, y_mask, pi, opt_ret, cost, kl_cost
+    return trng, use_noise, x, x_mask, y, y_mask, pi, pi_mask, opt_ret, cost, kl_cost
  
 
 # build a sampler
 def build_sampler(tparams, options, trng, use_noise):
     x = tensor.matrix('x', dtype='int64')
     xr = x[::-1]
+    pi = tensor.tensor3('pi', dtype='float32')
+    pi_mask = tensor.matrix('pi_mask', dtype='float32')
+
     n_timesteps = x.shape[0]
+    n_timesteps_pi = pi.shape[0]
     n_samples = x.shape[1]
+
+    pi_dim = options['dim_pi']
 
     # word embedding (source), forward and backward
     emb = tparams['Wemb'][x.flatten()]
     emb = emb.reshape([n_timesteps, n_samples, options['dim_word']])
     embr = tparams['Wemb'][xr.flatten()]
     embr = embr.reshape([n_timesteps, n_samples, options['dim_word']])
-
+    
     # encoder
     proj = get_layer(options['encoder'])[1](tparams, emb, options,
                                             prefix='encoder')
     projr = get_layer(options['encoder'])[1](tparams, embr, options,
                                              prefix='encoder_r')
+
+    # image feature extraction
+    pic = get_layer('image')[1](tparams, pi.reshape([n_timesteps_pi*n_samples,pi_dim]), options, prefix='image')
+    pic = pic.reshape([n_timesteps_pi, n_samples, options['dim_pic']])
+    pic = (pic * pi_mask[:,:,None]).sum(0) / pi_mask.sum(0)[:, None]
 
     # concatenate forward and backward rnn hidden states
     ctx = concatenate([proj[0], projr[0][::-1]], axis=proj[0].ndim-1)
@@ -883,15 +927,15 @@ def build_sampler(tparams, options, trng, use_noise):
                                     prefix='ff_state', activ='tanh')
 
     print 'Building f_init...',
-    outs = [init_state, ctx]
-    f_init = theano.function([x], outs, name='f_init', profile=profile)
+    outs = [init_state, ctx, pic]
+    f_init = theano.function([x,pi,pi_mask], outs, name='f_init', profile=profile)
     print 'Done'
 
     # x: 1 x 1
     y = tensor.vector('y_sampler', dtype='int64')
     init_state = tensor.matrix('init_state', dtype='float32')
     
-    sample_z,_ = get_layer('variation')[1](tparams, ctx_mean,options,prefix='variation',training=False)
+    sample_z,_ = get_layer('variation')[1](tparams, ctx_mean, options, pic=pic, prefix='variation', training=False)
     
     # if it's the first word, emb should be all zero and it is indicated by -1
     emb = tensor.switch(y[:, None] < 0,
@@ -931,7 +975,7 @@ def build_sampler(tparams, options, trng, use_noise):
     # compile a function to do the whole thing above, next word probability,
     # sampled word for the next target, next hidden state to be used
     print 'Building f_next..',
-    inps = [y, ctx, init_state]
+    inps = [y, ctx, pic, init_state]
     outs = [next_probs, next_sample, next_state]
     f_next = theano.function(inps, outs, name='f_next', profile=profile)
     print 'Done'
@@ -941,14 +985,15 @@ def build_sampler(tparams, options, trng, use_noise):
 
 # generate sample, either with stochastic sampling or beam search. Note that,
 # this function iteratively calls f_init and f_next functions.
-def gen_sample(tparams, f_init, f_next, x, options, trng=None, k=1, maxlen=30,
+def gen_sample(tparams, f_init, f_next, x, pi, pi_mask, options, trng=None, k=1, maxlen=30,
                stochastic=True, argmax=False):
 
     # k is the beam size we have
     if k > 1:
         assert not stochastic, \
             'Beam search does not support stochastic sampling'
-
+    #pi = pi.sum(0) / pi_mask.sum(0)
+    
     sample = []
     sample_score = []
     if stochastic:
@@ -962,13 +1007,13 @@ def gen_sample(tparams, f_init, f_next, x, options, trng=None, k=1, maxlen=30,
     hyp_states = []
 
     # get initial state of decoder rnn and encoder context
-    ret = f_init(x)
-    next_state, ctx0 = ret[0], ret[1]
+    ret = f_init(x,pi,pi_mask)
+    next_state, ctx0, pic = ret[0], ret[1], ret[2]
     next_w = -1 * numpy.ones((1,)).astype('int64')  # bos indicator
 
     for ii in xrange(maxlen):
         ctx = numpy.tile(ctx0, [live_k, 1])
-        inps = [next_w, ctx, next_state]
+        inps = [next_w, ctx, pic, next_state]
         ret = f_next(*inps)
         next_p, next_w, next_state = ret[0], ret[1], ret[2]
 
@@ -1046,11 +1091,11 @@ def pred_probs(f_log_probs, prepare_data, options, iterator, verbose=True):
     for x, y, pi in iterator:
         n_done += len(x)
 
-        x, x_mask, y, y_mask, _ = prepare_data(x, y,
+        x, x_mask, y, y_mask, pi, pi_mask = prepare_data(x, y, images = pi,
                                             n_words_src=options['n_words_src'],
-                                            n_words=options['n_words'])
+                                                         n_words=options['n_words'],dim_pi=options['dim_pi'])
 
-        pprobs = f_log_probs(x, x_mask, y, y_mask)
+        pprobs = f_log_probs(x, x_mask, y, y_mask, pi, pi_mask)
         for pp in pprobs:
             probs.append(pp)
 
@@ -1112,7 +1157,7 @@ def adadelta(lr, tparams, grads, inp, cost, kl_cost):
     rg2up = [(rg2, 0.95 * rg2 + 0.05 * (g ** 2))
              for rg2, g in zip(running_grads2, grads)]
 
-    f_grad_shared = theano.function(inp, [cost,kl_cost], updates=zgup+rg2up,
+    f_grad_shared = theano.function(inp, [cost, kl_cost], updates=zgup+rg2up,
                                     profile=profile)
 
     updir = [-tensor.sqrt(ru2 + 1e-6) / tensor.sqrt(rg2 + 1e-6) * zg
@@ -1210,10 +1255,10 @@ def train(dim_word=100,  # word vector dimensionality
               '/data/lisatmp3/chokyun/europarl/europarl-v7.fr-en.en.tok.pkl',
               '/data/lisatmp3/chokyun/europarl/europarl-v7.fr-en.fr.tok.pkl'],
           use_dropout=False,
-          reload_=False,
-          overwrite=False,
           fine_tuning=False,
-          fine_tuning_load=""):
+          fine_tuning_load="",
+          reload_=False,
+          overwrite=False):
 
     # Model options
     model_options = locals().copy()
@@ -1238,17 +1283,17 @@ def train(dim_word=100,  # word vector dimensionality
         print 'Reloading model options'
         with open('%s.pkl' % fine_tuning_load, 'rb') as f:
             model_options = pkl.load(f)
-            model_options["dim_pi"]=dim_pi
-            model_options["dim_pic"]=dim_pic
-            model_options["dimv"]=dimv
+            model_options["dimv"] = dimv
+            model_options["dim_pi"] = dim_pi
+            model_options["dim_pic"] = dim_pic
 
     print 'Loading data'
-    train = TextIterator(datasets[0], datasets[1], datasets[2],
+    train = TextIterator(datasets[0], datasets[1], datasets[2],datasets[3],datasets[4],
                          dictionaries[0], dictionaries[1],
                          n_words_source=n_words_src, n_words_target=n_words,
                          batch_size=batch_size,
                          maxlen=maxlen)
-    valid = TextIterator(valid_datasets[0], valid_datasets[1], valid_datasets[2],
+    valid = TextIterator(valid_datasets[0], valid_datasets[1], valid_datasets[2],valid_datasets[3],valid_datasets[4],
                          dictionaries[0], dictionaries[1],
                          n_words_source=n_words_src, n_words_target=n_words,
                          batch_size=valid_batch_size,
@@ -1268,18 +1313,18 @@ def train(dim_word=100,  # word vector dimensionality
     tparams = init_tparams(params)
 
     trng, use_noise, \
-        x, x_mask, y, y_mask, pi,\
+        x, x_mask, y, y_mask, pi,pi_mask,\
         opt_ret, \
         cost, kl_cost = \
         build_model(tparams, model_options)
-    inps = [x, x_mask, y, y_mask, pi]
+    inps = [x, x_mask, y, y_mask, pi, pi_mask]
 
     val_trng, val_use_noise, \
-        val_x, val_x_mask, val_y, val_y_mask,\
+        val_x, val_x_mask, val_y, val_y_mask, val_pi, val_pi_mask,\
         val_opt_ret, \
         val_cost = \
         build_model(tparams, model_options,training=False)
-    val_inps = [val_x, val_x_mask, val_y, val_y_mask]
+    val_inps = [val_x, val_x_mask, val_y, val_y_mask, val_pi, val_pi_mask]
 
     print 'Building sampler'
     f_init, f_next = build_sampler(tparams, model_options, trng, use_noise)
@@ -1369,10 +1414,12 @@ def train(dim_word=100,  # word vector dimensionality
             uidx += 1
             use_noise.set_value(1.)
 
-            x, x_mask, y, y_mask, pi = prepare_data(x, y, images=pi, maxlen=maxlen,
+            x, x_mask, y, y_mask, pi, pi_mask = prepare_data(x, y, images=pi, maxlen=maxlen,
                                                 n_words_src=n_words_src,
-                                                n_words=n_words)
+                                                             n_words=n_words, dim_pi=dim_pi)
 
+            #pi = numpy.array(pi, dtype=numpy.float32)
+            
             if x is None:
                 print 'Minibatch with zero sample under length ', maxlen
                 uidx -= 1
@@ -1381,7 +1428,7 @@ def train(dim_word=100,  # word vector dimensionality
             ud_start = time.time()
 
             # compute cost, grads and copy grads to shared variables
-            cost, kl_cost = f_grad_shared(x, x_mask, y, y_mask, pi)
+            cost, kl_cost = f_grad_shared(x, x_mask, y, y_mask, pi, pi_mask)
 
             # do the update on parameters
             f_update(lrate)
@@ -1396,7 +1443,7 @@ def train(dim_word=100,  # word vector dimensionality
 
             # verbose
             if numpy.mod(uidx, dispFreq) == 0:
-                print 'Epoch ', eidx, 'Update ', uidx, 'Cost ', cost, 'UD ', ud, 'kl-cost ', kl_cost
+                print 'Epoch ', eidx, 'Update ', uidx, 'Cost ', cost, 'UD ', ud, 'kl_cost ', kl_cost
 
             # save the best model so far, in addition, save the latest model
             # into a separate file with the iteration number for external eval
@@ -1426,7 +1473,7 @@ def train(dim_word=100,  # word vector dimensionality
                 for jj in xrange(numpy.minimum(5, x.shape[1])):
                     stochastic = True
                     sample, score = gen_sample(tparams, f_init, f_next,
-                                               x[:, jj][:, None],
+                                               x[:, jj][:, None],pi[:, jj, :][:,None],pi_mask[:,jj][:,None],
                                                model_options, trng=trng, k=1,
                                                maxlen=30,
                                                stochastic=stochastic,
