@@ -6,10 +6,13 @@ import argparse
 import numpy
 import cPickle as pkl
 
-from mvnmt import (build_sampler, gen_sample, load_params,
+from vnmt import (build_sampler, gen_sample, load_params,
                  init_params, init_tparams)
 
 from multiprocessing import Process, Queue
+
+import os
+import os.path as osp
 
 
 def translate_model(queue, rqueue, pid, model, options, k, normalize, n_best):
@@ -29,10 +32,11 @@ def translate_model(queue, rqueue, pid, model, options, k, normalize, n_best):
     # word index
     f_init, f_next = build_sampler(tparams, options, trng, use_noise)
 
-    def _translate(seq):
+    def _translate(seq, pi):
         # sample given an input sequence and obtain scores
+        #print(pi.shape, len(seq))
         sample, score = gen_sample(tparams, f_init, f_next,
-                                   numpy.array(seq).reshape([len(seq), 1]),
+                numpy.array(seq).reshape([len(seq), 1]),pi[:,None,:],
                                    options, trng=trng, k=k, maxlen=200,
                                    stochastic=False, argmax=False)
 
@@ -47,20 +51,23 @@ def translate_model(queue, rqueue, pid, model, options, k, normalize, n_best):
         return numpy.array(sample)[sidx], numpy.array(score)[sidx]
 
     while True:
+        print pid, "get start"
         req = queue.get()
+        print pid, "yay"
         if req is None:
+            print pid, "break!!!"
             break
 
-        idx, x = req[0], req[1]
+        idx, x, pi = req[0], req[1], req[2]
         print pid, '-', idx
-        seq, scores = _translate(x)
+        seq, scores = _translate(x, pi)
 
         rqueue.put((idx, seq, scores))
 
     return
 
 
-def main(model, dictionary, dictionary_target, source_file, saveto, k=5,
+def main(model, dictionary, dictionary_target, source_file, image_file, rcnn_feats, rcnn_class, image_basedir, saveto, k=5,
          normalize=False, n_process=5, chr_level=False, n_best=1):
 
     # load model model_options
@@ -95,6 +102,19 @@ def main(model, dictionary, dictionary_target, source_file, saveto, k=5,
             args=(queue, rqueue, midx, model, options, k, normalize, n_best))
         processes[midx].start()
 
+    def get_index(image_basedir,cls,top_n):
+        with open(os.path.join(image_basedir,cls.strip()),'r') as f:
+            result = []
+            idx_result = []
+            line = f.readlines()
+            for idx,c in enumerate(line):
+                if idx==top_n:
+                    break
+                if c not in result:
+                    result.append(c)
+                    idx_result.append(idx)
+        return idx_result
+
     # utility function
     def _seqs2words(caps):
         capsw = []
@@ -107,9 +127,11 @@ def main(model, dictionary, dictionary_target, source_file, saveto, k=5,
             capsw.append(' '.join(ww))
         return capsw
 
-    def _send_jobs(fname):
-        with open(fname, 'r') as f:
-            for idx, line in enumerate(f):
+    def _send_jobs(fname,image_f,rcnn_feats,rcnn_class,image_basedir):
+        with open(fname, 'r') as f, open(rcnn_feats, 'r') as f1, open(rcnn_class, 'r') as f2:
+            idx = 0
+            images = numpy.load(image_f)
+            for line,rcnn_path,cls_path,image in zip(f,f1,f2,images):
                 if chr_level:
                     words = list(line.decode('utf-8').strip())
                 else:
@@ -117,8 +139,14 @@ def main(model, dictionary, dictionary_target, source_file, saveto, k=5,
                 x = map(lambda w: word_dict[w] if w in word_dict else 1, words)
                 x = map(lambda ii: ii if ii < options['n_words'] else 1, x)
                 x += [0]
-                queue.put((idx, x))
-        return idx+1
+                image = image[numpy.newaxis,:]
+                idx_ = get_index(image_basedir,cls_path,4)
+                rcnn = numpy.load(os.path.join(image_basedir,rcnn_path.strip()))[idx_]
+                pi = numpy.concatenate((image,rcnn), axis=0)
+                queue.put((idx, x, pi))
+                idx += 1
+        return idx
+                
 
     def _finish_processes():
         for midx in xrange(n_process):
@@ -136,7 +164,7 @@ def main(model, dictionary, dictionary_target, source_file, saveto, k=5,
         return trans, scores
 
     print 'Translating ', source_file, '...'
-    n_samples = _send_jobs(source_file)
+    n_samples = _send_jobs(source_file, image_file,rcnn_feats,rcnn_class,image_basedir )
     trans, scores = _retrieve_jobs(n_samples)
     _finish_processes()
 
@@ -171,10 +199,14 @@ if __name__ == "__main__":
     parser.add_argument('dictionary', type=str)
     parser.add_argument('dictionary_target', type=str)
     parser.add_argument('source', type=str)
+    parser.add_argument('image')
+    parser.add_argument('rcnn_feats', type=str)
+    parser.add_argument('rcnn_class', type=str)
+    parser.add_argument('image_dir', type=str)
     parser.add_argument('saveto', type=str)
 
     args = parser.parse_args()
 
-    main(args.model, args.dictionary, args.dictionary_target, args.source,
+    main(args.model, args.dictionary, args.dictionary_target, args.source,args.image,args.rcnn_feats,args.rcnn_class,args.image_dir,
          args.saveto, k=args.k, normalize=args.n, n_process=args.p,
          chr_level=args.c, n_best=args.b)
