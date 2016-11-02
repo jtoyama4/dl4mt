@@ -67,14 +67,15 @@ def translate_model(queue, rqueue, pid, model, options, k, normalize, n_best):
     return
 
 
-def main(model, dictionary, dictionary_target, source_file, image_file, rcnn_feats, rcnn_class, image_basedir, saveto, k=5,
+def main(option_file, model, dictionary, dictionary_target, source_file, image_file, rcnn_feats, rcnn_class, image_basedir, saveto, k=5,
          normalize=False, n_process=5, chr_level=False, n_best=1):
-
     # load model model_options
-    with open('%s.pkl' % model, 'rb') as f:
+    if len(option_file) == 0:
+        option_file = '%s.pkl' % model
+    with open(option_file, 'rb') as f:
         options = pkl.load(f)
 
-    # load source dictionary and invert
+        # load source dictionary and invert
     with open(dictionary, 'rb') as f:
         word_dict = pkl.load(f)
     word_idict = dict()
@@ -196,6 +197,7 @@ if __name__ == "__main__":
     parser.add_argument('-c', action="store_true", default=False,
                         help="Character level")
     parser.add_argument('-b', type=int, default=1, help="Output n-best list")
+    parser.add_argument('-o', type=str, default='', help="option parameter")
     parser.add_argument('model', type=str)
     parser.add_argument('dictionary', type=str)
     parser.add_argument('dictionary_target', type=str)
@@ -208,6 +210,6 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    main(args.model, args.dictionary, args.dictionary_target, args.source,args.image,args.rcnn_feats,args.rcnn_class,args.image_dir,
+    main(args.o, args.model, args.dictionary, args.dictionary_target, args.source,args.image,args.rcnn_feats,args.rcnn_class,args.image_dir,
          args.saveto, k=args.k, normalize=args.n, n_process=args.p,
          chr_level=args.c, n_best=args.b)
