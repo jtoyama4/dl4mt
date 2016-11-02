@@ -1,5 +1,6 @@
 import numpy
 import os
+import os.path as osp
 import argparse
 
 print "This is MVNMT"
@@ -9,7 +10,6 @@ from mvnmt import train
 
 def main(job_id, params):
     print params
-    basedir = '/home/ubuntu/dl4mt-tutorial'
     validerr = train(saveto=params['model'][0],
                      reload_=params['reload'][0],
                      fine_tuning=params['fine_tuning'][0],
@@ -25,17 +25,17 @@ def main(job_id, params):
                      clip_c=params['clip-c'][0],
                      lrate=params['learning-rate'][0],
                      optimizer=params['optimizer'][0],
-                     maxlen=30,
-                     batch_size=128,
-                     valid_batch_size=128,
-                     datasets=['%s/flickr30k/bitext.train.en.tok.txt' % basedir,
-                               '%s/flickr30k/bitext.train.de.tok.txt' % basedir,
-                               '%s/flickr30k/fc7.train.npy' % basedir],
-                     valid_datasets=['%s/flickr30k/bitext.val.en.tok.txt' % basedir,
-                                     '%s/flickr30k/bitext.val.de.tok.txt' % basedir,
-                                     '%s/flickr30k/fc7.val.npy' % basedir],
-                     dictionaries=['%s/flickr30k/bitext.train.en.tok.txt.pkl' % basedir,
-                                   '%s/flickr30k/bitext.train.de.tok.txt.pkl' % basedir],
+                     maxlen=params['maxlen'],
+                     batch_size=params['batchsize'],
+                     valid_batch_size=params['batchsize'],
+                     datasets=['%s/flickr30k/bitext.train.en.tok.txt' % params['basedir'],
+                               '%s/flickr30k/bitext.train.de.tok.bpe.txt' % params['basedir'],
+                               '%s/flickr30k/fc7.train.npy' % params['basedir']],
+                     valid_datasets=['%s/flickr30k/bitext.val.en.tok.txt' % params['basedir'],
+                                     '%s/flickr30k/bitext.val.de.tok.bpe.txt' % params['basedir'],
+                                     '%s/flickr30k/fc7.val.npy' % params['basedir']],
+                     dictionaries=['%s/flickr30k/bitext.train.en.tok.txt.pkl' % params['basedir'],
+                                   '%s/flickr30k/bitext.train.de.tok.bpe.txt.pkl' % params['basedir']],
                      validFreq=1000,
                      dispFreq=1,
                      saveFreq=1000,
@@ -45,28 +45,55 @@ def main(job_id, params):
     return validerr
 
 if __name__ == '__main__':
-    basedir = '/home/ubuntu/dl4mt-tutorial'
-
     parser = argparse.ArgumentParser(description='')
     parser.add_argument('--load',action='store_true',default=False)
     parser.add_argument('--fine_tuning', action='store_true', default=False)
+    parser.add_argument('--modeldir', type=str, default="mvnmt1")
+    parser.add_argument('--finetunedir', type=str, default="best_model/vnmt")
+    parser.add_argument('--dim', type=str, default=256)
+    parser.add_argument('--dim_word', type=int, default=256)
+    parser.add_argument('--dimv', type=int, default=512)
+    parser.add_argument('--dim_pi', type=int, default=4096)
+    parser.add_argument('--dim_pic', type=int, default=256)
+    parser.add_argument('--batchsize', type=int, default=32)
+    parser.add_argument('--maxlen', type=int, default=50)
+    parser.add_argument('--decay_c', type=float, default=0.0001)
+    parser.add_argument('--lr', type=float, default=1.0)
     args = parser.parse_args()
 
+    basedir = osp.join(osp.dirname(osp.abspath(__file__)), "../")
+    modeldir = osp.join(basedir, "models", args.modeldir)
+    finetunedir = osp.join(basedir, "models", args.finetunedir)
+    validdir = osp.join(modeldir, "valid")
+    scriptdir = osp.join(basedir, "script")
+    print("basedir: {}".format(basedir))
+    print("modeldir: {}".format(modeldir))
+    if not osp.exists(modeldir):
+        os.makedirs(modeldir)
+    if not osp.exists(validdir):
+        os.makedirs(validdir)
+
     main(0, {
-        'model': ['%s/models/mvnmt/model_mvnmt_2_fine.npz' % basedir],
-        'fine_tuning_load':['%s/models/vnmt/model_vnmt.npz' % basedir],
-        'dim_word': [256],
-        'dim': [256],
-        'dimv': [100],
-        'dim_pi': [4096],
-        'dim_pic': [256],
+        'basedir': basedir,
+        'model': ['%s/model_mvnmt.npz' % modeldir],
+        'fine_tuning_load':['%s/model_vnmt.npz' % finetunedir],
+        'validdir': validdir,
+        'scriptdir': scriptdir,
+        'dim_word': [args.dim_word],
+        'dim': [args.dim],
+        'dimv': [args.dimv],
+        'dim_pi': [args.dim_pi],
+        'dim_pic': [args.dim_pic],
         #'n-words': [30000],
-        'n-words': [10211,18723],
+        'n-words': [10211,13180],
         'optimizer': ['adadelta'],
-        'decay-c': [0.0001],
+        'decay-c': [args.decay_c],
         'clip-c': [1.],
         'use-dropout': [False],
         #'learning-rate': [0.0001],
-        'learning-rate': [1.0],
+        'learning-rate': [args.lr],
         'reload': [args.load],
+        'batchsize': args.batchsize,
+        'maxlen': args.maxlen,
         'fine_tuning': [args.fine_tuning]})
+

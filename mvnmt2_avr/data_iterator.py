@@ -11,7 +11,7 @@ def fopen(filename, mode='r'):
 
 class TextIterator:
     """Simple Bitext iterator."""
-    def __init__(self, source, target,image,global_fc7,
+    def __init__(self, source, target,image,global_fc7, class_txt,
                  source_dict, target_dict,
                  batch_size=128,
                  maxlen=100,
@@ -20,6 +20,7 @@ class TextIterator:
         self.source = fopen(source, 'r')
         self.target = fopen(target, 'r')
         self.image_list = fopen(image, 'r')
+        self.class_txt = fopen(class_txt, 'r')
         self.image_basedir = os.path.dirname(image)
         self.global_fc7 = numpy.load(global_fc7)
         with open(source_dict, 'rb') as f:
@@ -44,6 +45,7 @@ class TextIterator:
         self.source.seek(0)
         self.target.seek(0)
         self.image_list.seek(0)
+        self.class_txt.seek(0)
         self.count = 0
 
     def get_index(self,cls,top_n):
@@ -98,7 +100,7 @@ class TextIterator:
                     continue
 
                 cls = self.class_txt.readline()
-                idx = self.get_index(cls,1)
+                idx = self.get_index(cls,4)
                 fc7_global = self.global_fc7[self.count]
                 fc7_global = fc7_global[numpy.newaxis,:]
                 ii = numpy.load(os.path.join(self.image_basedir, self.image_list.readline().strip()))
