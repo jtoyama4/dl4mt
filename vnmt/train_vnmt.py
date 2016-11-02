@@ -43,7 +43,7 @@ def main(job_id, params):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='')
     parser.add_argument('--load',action='store_true',default=False)
-    parser.add_argument('--fine_tuning', action='store_true', default=False)
+    parser.add_argument('--fine_tuning', action='store_true', default=True)
     parser.add_argument('--modeldir', type=str, default="vnmt")
     parser.add_argument('--finetunedir', type=str, default="nmt")
     parser.add_argument('--dim', type=str, default=256)

@@ -52,14 +52,14 @@ if __name__ == '__main__':
     parser.add_argument('--load',action='store_true',default=False)
     parser.add_argument('--fine_tuning', action='store_true', default=False)
     parser.add_argument('--modeldir', type=str, default="cmu")
-    parser.add_argument('--finetunedir', type=str, default="best_model/nmt")
+    parser.add_argument('--finetunedir', type=str, default="nmt")
     parser.add_argument('--dim', type=str, default=256)
     parser.add_argument('--dim_word', type=int, default=256)
     parser.add_argument('--dim_pi', type=int, default=4096)
-    parser.add_argument('--dim_pic', type=int, default=256)
+    parser.add_argument('--dim_pic', type=int, default=128)
     parser.add_argument('--batchsize', type=int, default=32)
     parser.add_argument('--maxlen', type=int, default=50)
-    parser.add_argument('--decay_c', type=float, default=0.0001)
+    parser.add_argument('--decay_c', type=float, default=0.0005)
     parser.add_argument('--lr', type=float, default=1.0)
     args = parser.parse_args()
 
@@ -77,7 +77,7 @@ if __name__ == '__main__':
 
     main(0, {
         'basedir': basedir,
-        'model': ['%s/model_nmt.npz' % modeldir],
+        'model': ['%s/model_cmu.npz' % modeldir],
         'fine_tuning_load':['%s/model_nmt.npz' % finetunedir],
         'validdir': validdir,
         'scriptdir': scriptdir,
@@ -85,13 +85,11 @@ if __name__ == '__main__':
         'dim': [args.dim],
         'dim_pi': [args.dim_pi],
         'dim_pic': [args.dim_pic],
-        #'n-words': [30000],
         'n-words': [10211,13180],
         'optimizer': ['adadelta'],
         'decay-c': [args.decay_c],
         'clip-c': [1.],
         'use-dropout': [False],
-        #'learning-rate': [0.0001],
         'learning-rate': [args.lr],
         'reload': [args.load],
         'batchsize': args.batchsize,
