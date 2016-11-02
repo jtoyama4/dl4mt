@@ -16,7 +16,7 @@ def main(log, title, outfile):
             if r is not None:
                 cost.append(float(r.group(3)))
 
-    plt.plot(cost, label="cost")
+    plt.plot(cost, label="cost", color="b")
     plt.legend()
     plt.title(title)
     plt.xlabel("iteration")
