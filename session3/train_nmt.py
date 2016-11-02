@@ -41,7 +41,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='')
     parser.add_argument('--load',action='store_true',default=False)
     parser.add_argument('--modeldir', type=str, default="nmt")
-    parser.add_argument('--dim', type=str, default=256)
+    parser.add_argument('--dim', type=int, default=256)
     parser.add_argument('--dim_word', type=int, default=256)
     parser.add_argument('--batchsize', type=int, default=32)
     parser.add_argument('--maxlen', type=int, default=50)
@@ -51,20 +51,15 @@ if __name__ == '__main__':
 
     basedir = osp.join(osp.dirname(osp.abspath(__file__)), "../")
     modeldir = osp.join(basedir, "models", args.modeldir)
-    finetunedir = osp.join(basedir, "models", args.finetunedir)
-    validdir = osp.join(modeldir, "valid")
     scriptdir = osp.join(basedir, "script")
     print("basedir: {}".format(basedir))
     print("modeldir: {}".format(modeldir))
     if not osp.exists(modeldir):
         os.makedirs(modeldir)
-    if not osp.exists(validdir):
-        os.makedirs(validdir)
 
     main(0, {
         'basedir': basedir,
         'model': ['%s/model_nmt.npz' % modeldir],
-        'validdir': validdir,
         'scriptdir': scriptdir,
         'dim_word': [args.dim_word],
         'dim': [args.dim],
@@ -76,6 +71,5 @@ if __name__ == '__main__':
         'learning-rate': [args.lr],
         'reload': [args.load],
         'batchsize': args.batchsize,
-        'maxlen': args.maxlen,
-        'fine_tuning': [args.fine_tuning]})
+        'maxlen': args.maxlen})
 
