@@ -49,7 +49,7 @@ if __name__ == '__main__':
     parser.add_argument('--load',action='store_true',default=False)
     parser.add_argument('--fine_tuning', action='store_true', default=False)
     parser.add_argument('--modeldir', type=str, default="mvnmt1")
-    parser.add_argument('--finetunedir', type=str, default="best_model/vnmt")
+    parser.add_argument('--finetunedir', type=str, default="vnmt")
     parser.add_argument('--dim', type=str, default=256)
     parser.add_argument('--dim_word', type=int, default=256)
     parser.add_argument('--dimv', type=int, default=512)
