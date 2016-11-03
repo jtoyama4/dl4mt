@@ -21,7 +21,7 @@ P=3 # process number
 K=12 # beam width
 SRC_DICT="../flickr30k/bitext.train.en.tok.txt.pkl"
 DST_DICT="../flickr30k/bitext.train.de.tok.txt.pkl"
-SRC="../flickr30k/bitext.val.en.tok.txt"
+SRC="../flickr30k/bitext.test.en.tok.txt"
 OPTION_FILE="$MODEL_DIR/model_$TYPE.npz.pkl"
 if [ "$1" == "nmt" ] ; then
     TRANSLATE_SCRIPT="../session3/translate.py"
@@ -34,7 +34,7 @@ if [ $# -ge 4 ] ; then
 fi
 
 if [ $# -ge 5 ] ; then
-    STEP=$4
+    STEP=$5
 fi
 
 if [ ! -d "$OUTDIR" ] ; then
@@ -44,6 +44,7 @@ fi
 while true
 do
     MODEL="$MODEL_DIR/model_$TYPE.iter$N.npz"
+    echo "$MODEL"
     if [ ! -e $MODEL ] ; then
         echo "$MODEL does not exists"
         exit
