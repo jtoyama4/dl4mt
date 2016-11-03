@@ -7,14 +7,15 @@
 
 METEORJAR="../script/meteor-1.5/meteor-1.5.jar"
 RESULTDIR="./all_result"
+SPLIT="val"
 
-TRUE="../flickr30k/bitext.test.de.tok.txt"
+TRUE="../flickr30k/bitext.${SPLIT}.de.tok.txt"
 
 
-for SRC in `find $RESULTDIR -name "test_result.*.merged.detok.txt" | sort -V`
+for SRC in `find $RESULTDIR -name "${SPLIT}_result.*.merged.detok.txt" | sort -V`
 do
     FILE=`basename $SRC .txt`
-    NUM=${FILE##test_result.*.merged.detok.txt}
+    NUM=${FILE##${SPLIT}_result.*.merged.detok.txt}
 
     #echo "${RESULTDIR}/${NUM}.meteor.txt"
     if [ ! -f "${RESULTDIR}/${NUM}.meteor.txt" ] ; then

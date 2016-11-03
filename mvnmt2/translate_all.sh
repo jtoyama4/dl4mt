@@ -15,15 +15,16 @@ TYPE="mvnmt"
 OUTDIR="all_result"
 N=1000
 STEP=1000
+SPLIT="val"
 
 P=3 # process number
 K=12 # beam width
 SRC_DICT="../flickr30k/bitext.train.en.tok.txt.pkl"
 DST_DICT="../flickr30k/bitext.train.de.tok.bpe.txt.pkl"
-SRC="../flickr30k/bitext.test.en.tok.txt"
-FC="../flickr30k/fc7.test.npy"
-IMGLIST="../flickr30k/test.imglist.txt"
-CLASSTXT="../flickr30k/test.class.txt"
+SRC="../flickr30k/bitext.${SPLIT}.en.tok.txt"
+FC="../flickr30k/fc7.${SPLIT}.npy"
+IMGLIST="../flickr30k/${SPLIT}.imglist.txt"
+CLASSTXT="../flickr30k/${SPLIT}.class.txt"
 IMGBASEDIR="../flickr30k"
 OPTION_FILE="$MODEL_DIR/model_$TYPE.npz.pkl"
 TRANSLATE_SCRIPT="./translate.py"
@@ -49,9 +50,9 @@ do
         exit
     fi
     
-    TARGET="$OUTDIR/test_result.$N.txt"
-    TARGET_MERGED="$OUTDIR/test_result.$N.merged.txt"
-    TARGET_DETOK="$OUTDIR/test_result.$N.merged.detok.txt"
+    TARGET="$OUTDIR/${SPLIT}_result.$N.txt"
+    TARGET_MERGED="$OUTDIR/${SPLIT}_result.$N.merged.txt"
+    TARGET_DETOK="$OUTDIR/${SPLIT}_result.$N.merged.detok.txt"
 
     if [ ! -f $TARGET ] ; then
         THEANO_FLAGS='device=cpu' python $TRANSLATE_SCRIPT -p $P -k $K -o $OPTION_FILE $MODEL $SRC_DICT $DST_DICT $SRC $FC $TARGET
