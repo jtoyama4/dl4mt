@@ -17,14 +17,14 @@ N=1000
 STEP=1000
 SPLIT="val"
 
-P=3 # process number
+P=28 # process number
 K=12 # beam width
 SRC_DICT="../flickr30k/bitext.train.en.tok.txt.pkl"
 DST_DICT="../flickr30k/bitext.train.de.tok.bpe.txt.pkl"
 SRC="../flickr30k/bitext.${SPLIT}.en.tok.txt"
 FC="../flickr30k/fc7.${SPLIT}.npy"
 IMGLIST="../flickr30k/${SPLIT}.imglist.txt"
-CLASSTXT="../flickr30k$/{SPLIT}.class.txt"
+CLASSTXT="../flickr30k/${SPLIT}.class.txt"
 IMGBASEDIR="../flickr30k"
 OPTION_FILE="$MODEL_DIR/model_$TYPE.npz.pkl"
 TRANSLATE_SCRIPT="./translate.py"
