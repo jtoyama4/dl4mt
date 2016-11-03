@@ -10,7 +10,7 @@
 #    echo $model
 #done
 
-MODEL_DIR="../models/session3/"
+MODEL_DIR="../models/nmt/"
 TYPE="nmt"
 OUTDIR="all_result"
 N=1000
