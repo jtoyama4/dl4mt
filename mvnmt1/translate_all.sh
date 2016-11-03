@@ -52,6 +52,7 @@ do
 
     if [ ! -f $TARGET ] ; then
         THEANO_FLAGS='device=cpu' python $TRANSLATE_SCRIPT -p $P -k $K -o $OPTION_FILE $MODEL $SRC_DICT $DST_DICT $SRC $TARGET
+        #THEANO_FLAGS='device=gpu0,lib.cnmem=0' python $TRANSLATE_SCRIPT -p $P -k $K -o $OPTION_FILE $MODEL $SRC_DICT $DST_DICT $SRC $TARGET
     fi
     if [ ! -f ${TARGET_MERGED} ] ; then
         sed "s/@@ //g" ${TARGET} > ${TARGET_MERGED}

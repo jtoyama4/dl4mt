@@ -17,7 +17,7 @@ N=1000
 STEP=1000
 SPLIT="val"
 
-P=3 # process number
+P=26 # process number
 K=12 # beam width
 SRC_DICT="../flickr30k/bitext.train.en.tok.txt.pkl"
 DST_DICT="../flickr30k/bitext.train.de.tok.bpe.txt.pkl"

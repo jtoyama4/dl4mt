@@ -9,7 +9,7 @@ METEORJAR="../script/meteor-1.5/meteor-1.5.jar"
 RESULTDIR="./all_result"
 SPLIT="val"
 
-TRUE="../flickr30k/bitext.${SPLIT}.de.tok.txt"
+TRUE="../flickr30k/${SPLIT}.norm.ln.de"
 
 
 for SRC in `find $RESULTDIR -name "${SPLIT}_result.*.merged.detok.txt" | sort -V`
