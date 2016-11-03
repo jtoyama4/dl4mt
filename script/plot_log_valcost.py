@@ -8,20 +8,20 @@ import re
 
 def main(log, title, outfile):
     cost = []
-    pat = re.compile("Epoch\s+(\d+)\s+Update\s+(\d+)\s+Cost\s+(.*)\s+UD\s+(.*)")
+    pat = re.compile(r"Valid\s(.*)")
 
     with open(log, "r") as f:
         for l in f.readlines():
             r = pat.match(l)
             if r is not None:
-                cost.append(float(r.group(3)))
+                cost.append(float(r.group(1)))
 
     plt.plot(cost, label="cost", color="b")
     plt.legend()
     plt.title(title)
-    plt.xlabel("iteration")
+    plt.xlabel("iteration (x 1000) ")
     plt.ylabel("cost")
-    plt.ylim([0,100])
+    plt.ylim([0,80])
     plt.savefig(outfile)
 
 if __name__ == "__main__":

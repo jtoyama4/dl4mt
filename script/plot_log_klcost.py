@@ -24,7 +24,7 @@ def main(log, title, outfile):
                 cost.append(c)
 
     plt.plot(klcost, label="klcost", color="r")
-    plt.plot(total_cost, label="total_cost", color="g")
+    #plt.plot(total_cost, label="total_cost", color="g")
     plt.plot(cost, label="cost", color="b")
     plt.legend()
     plt.title(title)
