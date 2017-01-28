@@ -254,12 +254,12 @@ def image_attention_layer(tparams, state_below, options, prefix='image_attention
     e = tensor.dot(tensor.tanh(p_ih), b)
     alpha_shp = e.shape
     alpha = tensor.nnet.softmax(e.reshape([alpha_shp[0], alpha_shp[1]]))
-    """if p_i.ndim == 3:
+    if p_i.ndim == 3:
         ctx = tensor.sum(state_below[0] * alpha[:,:,None], axis=1)
     else:
-        ctx = tensor.sum(state_below[0] * alpha[:,None], axis=0)
-    """
-    ctx = tensor.sum(state_below[0] * alpha[:,:,None], axis=1)
+        alpha_sample = alpha.reshape((alpha.shape[0],))
+        ctx = tensor.sum(state_below[0] * alpha_sample[:,None], axis=0)
+    
     return ctx
     
 #variation layer
