@@ -471,10 +471,11 @@ def variational_gru_layer(tparams, state_below, options, prefix='variational_gru
     
     pi = state_below[0]
     x = state_below[1]
-    if x.ndim == 3:
-        n_samples = x.shape[1]
-    else:
+    if one_step:
         n_samples = 1
+    else:
+        n_samples = x.shape[1]
+
 
     dim = tparams[_p(prefix, 'Ux')].shape[1]
 
@@ -492,8 +493,9 @@ def variational_gru_layer(tparams, state_below, options, prefix='variational_gru
     # input to compute the hidden state proposal
     state_belowx = tensor.dot(x, tparams[_p(prefix, 'Wx')]) + \
         tparams[_p(prefix, 'bx')]
+
     if not one_step:
-        mean_pi = tensor.mean(pi,axis=1)
+        mean_pi = tensor.mean(pi, axis=1)
         h0 = get_layer('ff')[1](tparams, mean_pi, options, prefix='ff_init_state', activ='tanh')
     
     # step function to be used by scan
@@ -569,8 +571,8 @@ def variational_gru_layer(tparams, state_below, options, prefix='variational_gru
     nsteps = x.shape[0]
     nn = x.shape[1]
     if not one_step:
-        #init_states = [h0, tensor.alloc(0.,1), tensor.alloc(0., n_samples, options['n_words_src'])]
-        init_states = [h0, tensor.alloc(0.,1), tensor.alloc(0.,n_samples,options['n_words_src'])]
+        init_states = [h0, tensor.alloc(0.,1), tensor.alloc(0., n_samples, options['n_words_src'])]
+
     _step = _step_slice
     shared_vars = [tparams[_p(prefix, 'U')],
                    tparams[_p(prefix, 'Ux')],
@@ -617,7 +619,6 @@ def variational_gru_layer(tparams, state_below, options, prefix='variational_gru
     return kl_cost, g_xs
 
 
-
 def init_params_vrnn(options):
     params = OrderedDict()
 
@@ -655,7 +656,7 @@ def build_model(tparams, options, training=True):
 
     kl_cost, g_xs = get_layer('variational_gru')[1](tparams, [pi3, emb], options, mask=x_mask)
 
-    x_flat_idx = tensor.arange(x_flat.shape[0]) * options['n_words_src'] + x_flat    
+    x_flat_idx = tensor.arange(x_flat.shape[0]) * options['n_words_src'] + x_flat
     #cost
 
     cost = -tensor.log(g_xs.flatten()[x_flat_idx])
@@ -668,25 +669,28 @@ def build_model(tparams, options, training=True):
 
 #build sampler for captioning
 def build_sampler(tparams, options, trng, use_noise):
-    x = tensor.vector('x', dtype='int64')
-    pi = tensor.matrix('pi', dtype='float32')
-    n_timesteps = x.shape[0]
-    n_samples = x.shape[1]
+    sample_x = tensor.vector('sample_x', dtype='int64')
+    sample_pi = tensor.matrix('sample_pi', dtype='float32')
+    #n_timesteps = x.shape[0]
+    n_samples = 1
 
-    emb = tensor.switch(x[:, None] < 0,
+    emb = tensor.switch(sample_x[:, None] < 0,
                         tensor.alloc(0., 1, tparams['Wemb'].shape[1]),
-                        tparams['Wemb'][x])
-    mean_pi = tensor.mean(pi,axis=0)
-    init_state = get_layer('ff')[1](tparams, mean_pi, options, prefix='ff_init_state', activ='tanh')
-    init_inps = [pi]
-    init_out = init_state
+                        tparams['Wemb'][sample_x])
+    
+    mean_pi = tensor.mean(sample_pi,axis=0)
+    ini_state = get_layer('ff')[1](tparams, mean_pi, options, prefix='ff_init_state', activ='tanh')
+    init_inps = [sample_pi]
+    init_out = ini_state
     f_init = theano.function(init_inps, init_out, name='f_init', profile=profile)
-    h, g_x_prob = get_layer('variational_gru')[1](tparams, [pi,emb], options,one_step=True, init_state=init_state)
+
+    init_state = tensor.vector('init_state', dtype='float32')
+    h, g_x_prob = get_layer('variational_gru')[1](tparams, [sample_pi, emb], options, one_step=True, init_state=init_state)
     next_h = h.reshape((options['dim'],))
     next_sample = trng.multinomial(pvals=g_x_prob).argmax(1)
 
     print 'Building f_next...'
-    inps = [x,pi,init_state]
+    inps = [sample_x, sample_pi,init_state]
     out = [g_x_prob, next_sample, next_h]
     f_next = theano.function(inps, out, name='f_next', profile=profile)
     print 'Done'
@@ -816,13 +820,13 @@ def pred_probs(f_log_probs, prepare_data, options, iterator, verbose=True):
 
 # optimizers
 # name(hyperp, tparams, grads, inputs (list), cost) = f_grad_shared, f_update
-def adam(lr, tparams, grads, inp, cost, kl_cost, beta1=0.9, beta2=0.999, e=1e-8):
+def adam(lr, tparams, grads, inp, cost, kl_cost, g_xs, x, beta1=0.9, beta2=0.999, e=1e-8):
 
     gshared = [theano.shared(p.get_value() * 0., name='%s_grad' % k)
                for k, p in tparams.iteritems()]
     gsup = [(gs, g) for gs, g in zip(gshared, grads)]
 
-    f_grad_shared = theano.function(inp, [cost,kl_cost], updates=gsup, profile=profile)
+    f_grad_shared = theano.function(inp, [cost,kl_cost, g_xs, x], updates=gsup, profile=profile)
 
     updates = []
 
@@ -1040,7 +1044,7 @@ def train(dim_word=100,  # word vector dimensionality
 
     # before any regularizer
     print 'Building f_log_probs...',
-    f_log_probs = theano.function(inps, kl_cost, profile=profile,on_unused_input='ignore')
+    f_log_probs = theano.function(inps, cost, profile=profile, on_unused_input='ignore')
     print 'Done'
     
     #f_log_probs for validation
@@ -1091,7 +1095,7 @@ def train(dim_word=100,  # word vector dimensionality
     # compile the optimizer, the actual computational graph is compiled here
     lr = tensor.scalar(name='lr')
     print 'Building optimizers...',
-    f_grad_shared, f_update = eval(optimizer)(lr, tparams, grads, inps, cost, kl_cost)
+    f_grad_shared, f_update = eval(optimizer)(lr, tparams, grads, inps, cost, kl_cost, g_xs, x)
     print 'Done'
 
     print 'Optimization'
@@ -1134,8 +1138,26 @@ def train(dim_word=100,  # word vector dimensionality
             ud_start = time.time()
 
             # compute cost, grads and copy grads to shared variables
-            cost, kl_cost = f_grad_shared(x, x_mask, pi)
-
+            cost, kl_cost, g_xs, xs = f_grad_shared(x, x_mask, pi)
+            print xs.shape
+            for ww in xs[:,0]:
+                if ww == 0:
+                    break
+                if ww in worddicts_r[0]:
+                    print worddicts_r[0][ww],
+                else:
+                    print 'UNK',
+            print ""
+            print g_xs.shape
+            for ww in g_xs[:,0]:
+                w_idx = numpy.argmax(ww)
+                if w_idx == 0:
+                    break
+                if w_idx in worddicts_r[0]:
+                    print worddicts_r[0][w_idx],
+                else:
+                    print 'UNK',
+            print ""
             # do the update on parameters
             f_update(lrate)
 
