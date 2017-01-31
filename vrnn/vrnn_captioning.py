@@ -174,7 +174,7 @@ def prepare_data(seqs_x, images=None, maxlen=None, n_words_src=30000, n_words=30
         new_images = []
 
         for l_x, s_x, p in zip(lengths_x, seqs_x, images):
-            if l_x < maxlen and l_y < maxlen:
+            if l_x < maxlen:
                 new_seqs_x.append(s_x)
                 new_lengths_x.append(l_x)
                 #new_seqs_y.append(s_y)
@@ -197,7 +197,7 @@ def prepare_data(seqs_x, images=None, maxlen=None, n_words_src=30000, n_words=30
     #y = numpy.zeros((maxlen_y, n_samples)).astype('int64')
     x_mask = numpy.zeros((maxlen_x, n_samples)).astype('float32')
     #y_mask = numpy.zeros((maxlen_y, n_samples)).astype('float32')
-    for idx, [s_x, s_y] in enumerate(zip(seqs_x, seqs_y)):
+    for idx, s_x in enumerate(seqs_x):
         x[:lengths_x[idx], idx] = s_x
         x_mask[:lengths_x[idx]+1, idx] = 1.
         #y[:lengths_y[idx], idx] = s_y
@@ -236,37 +236,43 @@ def param_init_image_attention(options, params, prefix="image_attention", nin_pi
 
     params[_p(prefix, 'W')] = norm_weight(nin_h, nout, scale=0.01)
     params[_p(prefix, 'U')] = norm_weight(nin_pi, nout, scale=0.01)
-    params[_p(prefix, 'b')] = numpy.zeros((nout,)).astype('float32')
+    params[_p(prefix, 'b')] = norm_weight(nout, 1, scale=0.01)
 
     return params
 
 def image_attention_layer(tparams, state_below, options, prefix='image_attention', **kwargs):
     #state_below[0] is image and state_below[1] is previous hidden state in encoder.
-    p_i = tensor.dot(state_below[0], tparams[_p(prefix, 'U')])
-    p_h = tensor.dot(state_below[1], tparams[_p(prefix, 'W')])
+    U = tparams[0]
+    W = tparams[1]
+    b = tparams[2]
+    p_i = tensor.dot(state_below[0], U)
+    p_h = tensor.dot(state_below[1], W)
     if p_i.ndim == 3:
         p_ih = p_i + p_h[:,None,:]
     else:
         p_ih = p_i + p_h[None,:]
-    e = tensor.dot(tensor.tanh(p_ih),tparams[_p(prefix, 'b')])
-    alpha = tensor.exp(e) / tensor.sum(tensor.exp(e))
+    e = tensor.dot(tensor.tanh(p_ih), b)
+    alpha_shp = e.shape
+    alpha = tensor.nnet.softmax(e.reshape([alpha_shp[0], alpha_shp[1]]))
     if p_i.ndim == 3:
         ctx = tensor.sum(state_below[0] * alpha[:,:,None], axis=1)
     else:
-        ctx = tensor.sum(state_below[0] * alpha[:,None], axis=0)
+        alpha_sample = alpha.reshape((alpha.shape[0],))
+        ctx = tensor.sum(state_below[0] * alpha_sample[:,None], axis=0)
+    
     return ctx
     
 #variation layer
 def param_init_variational(options, params, prefix='variational', nin=None, dim=None, dimv=None):
     if nin is None:
-        nin = optios['dim_proj']
+        nin = optios['dim']
     if dim is None:
-        dim = options['dim_proj']
+        dim = options['dim']
     if dimv is None:
         dimv = options['dimv']
     
     #prior network using mlp
-    W_pri = numpy.concatenate([norm_weight(options['dim_pic'],dimv),norm_weight(dim,dimv)])
+    W_pri = numpy.concatenate([norm_weight(options['dim_pi'],dimv),norm_weight(dim,dimv)])
     params[_p(prefix, 'W_pri')] = W_pri
     params[_p(prefix, 'W_pri_b')] = numpy.zeros((dimv,)).astype('float32')
     
@@ -279,7 +285,7 @@ def param_init_variational(options, params, prefix='variational', nin=None, dim=
     params[_p(prefix, 'W_pri_sigma_b')] = numpy.zeros((dimv,)).astype('float32')
     
     #post network using mlp
-    W_post = numpy.concatenate([norm_weight(options['dim_pic'],dimv),norm_weight(dim,dimv),norm_weight(nin,dimv)])
+    W_post = numpy.concatenate([norm_weight(options['dim_pi'],dimv),norm_weight(dim,dimv),norm_weight(nin,dimv)])
     params[_p(prefix, 'W_post')] = W_post
     params[_p(prefix, 'W_post_b')] = numpy.zeros((dimv,)).astype('float32')
     
@@ -300,9 +306,9 @@ def param_init_variational(options, params, prefix='variational', nin=None, dim=
     params[_p(prefix, 'W_dec_mu')] = W_dec_mu
     params[_p(prefix, 'W_dec_mu_b')] = numpy.zeros((nin,)).astype('float32')
 
-    W_dec_sigma = numpy.concatenate((norm_weight(dimv,nin), norm_weight(dim,nin)),axis=0)
-    params[_p(prefix, 'W_dec_sigma')] = W_dec_sigma
-    params[_p(prefix, 'W_dec_sigma_b')] = numpy.zeros((nin,)).astype('float32')
+    #W_dec_sigma = numpy.concatenate((norm_weight(dimv,nin), norm_weight(dim,nin)),axis=0)
+    #params[_p(prefix, 'W_dec_sigma')] = W_dec_sigma
+    #params[_p(prefix, 'W_dec_sigma_b')] = numpy.zeros((nin,)).astype('float32')
     
     #decoder can be categorical (if try to directly generate word)
     #W_dec_mu = norm_weight(nin,nin)
@@ -315,32 +321,54 @@ def param_init_variational(options, params, prefix='variational', nin=None, dim=
 
     return params
 
-def variational_layer(tparams, state_below, options, prefix='variational', mask=None, training=True,**kwargs):
+def variational_layer(tparams, state_below, options, prefix='variational', mask=None, training=True, nsteps = None,**kwargs):
     ctxpi = state_below[0]
     h_ = state_below[1]
-    _x = state_below[2]
-    nsteps = h_.shape[0]
+    #nsteps = h_.shape[0]
     if ctxpi.ndim == 2:
         training = True
     if h_.ndim == 1:
         training = False
     if not training:
         nsteps = 1
+        
+    if training:
+        _x = state_below[2]
+
+    W_pri = tparams[0]
+    W_pri_b = tparams[1]
+    W_pri_mu = tparams[2]
+    W_pri_mu_b = tparams[3]
+    W_pri_sigma = tparams[4]
+    W_pri_sigma_b = tparams[5]
+
+    W_post = tparams[6]
+    W_post_b = tparams[7]
+    W_post_mu = tparams[8]
+    W_post_mu_b = tparams[9]
+    W_post_sigma = tparams[10]
+    W_post_sigma_b = tparams[11]
+
+    W_z = tparams[12]
+    W_dec_mu = tparams[13]
+    W_dec_mu_b = tparams[14]
+    W_dec_x = tparams[15]
+    W_dec_x_b = tparams[16]
     
     #prior
     if training:
-        pri_1 = tensor.dot(concatenate([ctxpi,h_],axis=1),tparams[_p(prefix, 'W_pri')]) + tparams[_p(prefix, 'W_pri_b')]
-        pri_mu = tensor.dot(pri_1, tparams[_p(prefix, 'W_pri_mu')]) + tparams[_p(prefix, 'W_pri_mu_b')]
-        pri_sigma = tensor.nnet.softplus(tensor.dot(pri_1, tparams[_p(prefix, 'W_pri_sigma')]) + tparams[_p(prefix, 'W_pri_sigma_b')])
+        pri_1 = tensor.dot(concatenate([ctxpi,h_],axis=1),W_pri) + W_pri_b
+        pri_mu = tensor.dot(pri_1, W_pri_mu) + W_pri_mu_b
+        pri_sigma = tensor.nnet.softplus(tensor.dot(pri_1,W_pri_sigma) + W_pri_sigma_b)
 
-        post_1 = tensor.dot(concatenate([ctxpi,h_,_x], axis=1), tparams[_p(prefix, 'W_post')]) + tparams[_p(prefix, 'W_post_b')]
-        post_mu = tensor.dot(post_1, tparams[_p(prefix, 'W_post_mu')]) + tparams[_p(prefix, 'W_post_mu_b')]
-        post_sigma = tensor.nnet.softplus(tensor.dot(post_1, tparams[_p(prefix, 'W_post_sigma')]) + tparams[_p(prefix, 'W_post_sigma_b')])
+        post_1 = tensor.dot(concatenate([ctxpi,h_,_x], axis=1), W_post) + W_post_b
+        post_mu = tensor.dot(post_1, W_post_mu) + W_post_mu_b
+        post_sigma = tensor.nnet.softplus(tensor.dot(post_1, W_post_sigma) + W_post_sigma_b)
 
     else:
-        pri_1 = tensor.dot(concatenate([ctxpi,h_],axis=0),tparams[_p(prefix, 'W_pri')]) + tparams[_p(prefix, 'W_pri_b')]
-        pri_mu = tensor.dot(pri_1, tparams[_p(prefix, 'W_pri_mu')]) + tparams[_p(prefix, 'W_pri_mu_b')]
-        pri_sigma = tensor.nnet.softplus(tensor.dot(pri_1, tparams[_p(prefix, 'W_pri_sigma')]) + tparams[_p(prefix, 'W_pri_sigma_b')])
+        pri_1 = tensor.dot(concatenate([ctxpi,h_],axis=0),W_pri) + W_pri_b
+        pri_mu = tensor.dot(pri_1, W_pri_mu) + W_pri_mu_b
+        pri_sigma = tensor.nnet.softplus(tensor.dot(pri_1, W_pri_sigma) + W_pri_sigma_b)
 
     #KL computing
     kl_cost = tensor.alloc(0.,1)
@@ -381,11 +409,16 @@ def variational_layer(tparams, state_below, options, prefix='variational', mask=
     assert sample_z != None, 'man , sample z is NONE!!'
     
     
-    encoded_z = tensor.dot(sample_z, tparams[_p(prefix, 'W_z')])
-    generate_mu = tensor.dot(encoded_z, tparams[_p(prefix, 'W_dec_mu')]) + tparams[_p(prefix, 'W_dec_mu_b')]
+    encoded_z = tensor.dot(sample_z, W_z)
+    #generate_mu = tensor.dot(concatenate([encoded_z, h_],axis=1) , W_dec_mu) + W_dec_mu_b
+    if training:
+        generate_mu = tensor.dot(concatenate([encoded_z, h_],axis=1), W_dec_mu) + W_dec_mu_b
+    else:
+        generate_mu = tensor.dot(concatenate([encoded_z, h_[None,:]],axis=1), W_dec_mu) + W_dec_mu_b
     #generate_sigma = tensor.dot(encoded_z, tparams[_p(prefix, 'W_dec_sigma')]) + tparams[_p(prefix, 'W_dec_sigma_b')]
-    generated_x = tensor.nnet.softmax(tensor.dot(generate_mu, tparams[_p(prefix, 'W_dec_x')])+tparams[_p(prefix, 'W_dec_x_b')])
-    return kl_cost, sample_z, generated_x
+    x_mu = tensor.dot(generate_mu, W_dec_x) + W_dec_x_b
+    x_prob = tensor.nnet.softmax(x_mu)
+    return kl_cost, sample_z, x_prob
 
 #GRU layer
 def param_init_variational_gru(options, params, prefix='variational_gru', nin=None, dim=None, dimv=None):
@@ -401,7 +434,7 @@ def param_init_variational_gru(options, params, prefix='variational_gru', nin=No
     W = numpy.concatenate([norm_weight(nin, dim),
                            norm_weight(nin, dim)], axis=1)
     params[_p(prefix, 'W')] = W
-    params[_p(prefix, 'b')] = numpy.zeros((3 * dim,)).astype('float32')
+    params[_p(prefix, 'b')] = numpy.zeros((2 * dim,)).astype('float32')
 
     # recurrent transformation weights for gates
     U = numpy.concatenate([ortho_weight(dim),
@@ -438,10 +471,11 @@ def variational_gru_layer(tparams, state_below, options, prefix='variational_gru
     
     pi = state_below[0]
     x = state_below[1]
-    if x.ndim == 3:
-        n_samples = x.shape[1]
-    else:
+    if one_step:
         n_samples = 1
+    else:
+        n_samples = x.shape[1]
+
 
     dim = tparams[_p(prefix, 'Ux')].shape[1]
 
@@ -459,21 +493,23 @@ def variational_gru_layer(tparams, state_below, options, prefix='variational_gru
     # input to compute the hidden state proposal
     state_belowx = tensor.dot(x, tparams[_p(prefix, 'Wx')]) + \
         tparams[_p(prefix, 'bx')]
+
     if not one_step:
-        mean_pi = tensor.mean(pi,axis=1)
+        mean_pi = tensor.mean(pi, axis=1)
         h0 = get_layer('ff')[1](tparams, mean_pi, options, prefix='ff_init_state', activ='tanh')
     
     # step function to be used by scan
     # arguments    | sequences |outputs-info| non-seqs
-    def _step_slice(m_, x, x_, xx_, h_, kl, gx, U, Ux, Z, Zx, pi):
+    def _step_slice(m_, x, x_, xx_, h_, kl, gx, U, Ux, Z, Zx, i0, i1, i2, v0, v1, v2, v3, v4, v5, v6, v7, v8, v9, v10, v11, v12, v13, v14, v15, v16, pi, n):
         preact = tensor.dot(h_, U)
         preact += x_
-
+        tparams_i = [i0, i1, i2]
+        tparams_v = [v0, v1, v2, v3, v4, v5, v6, v7, v8, v9, v10, v11, v12, v13, v14, v15, v16]
         #compute attened image
-        ctxpi = get_layer('image_attention')[1](tparams,[pi,h_],options=options)
+        ctxpi = get_layer('image_attention')[1](tparams_i,[pi,h_],options=options)
         
         #compute z
-        kl, z, g_x = get_layer('variational')[1](tparams,[ctxpi,h_,x],options,mask=m_, training=True)
+        kl, z, g_x = get_layer('variational')[1](tparams_v,[ctxpi,h_,x],options,mask=m_,nsteps=n, training=True)
         
         preact_z = tensor.dot(z,Z)
         preact += preact_z
@@ -496,15 +532,18 @@ def variational_gru_layer(tparams, state_below, options, prefix='variational_gru
 
         return [h, kl.reshape((1,)), g_x]
 
-    def _step_slice_sample(m_, x, x_, xx_, h_, gx, U, Ux, Z, Zx, pi):
+    def _step_slice_sample(m_, x_, xx_, h_, gx, U, Ux, Z, Zx, i0, i1, i2, v0, v1, v2, v3, v4, v5, v6, v7, v8, v9, v10, v11, v12, v13, v14, v15, v16, pi, n):
         preact = tensor.dot(h_, U)
         preact += x_
 
+        tparams_i = [i0, i1, i2]
+        tparams_v = [v0, v1, v2, v3, v4, v5, v6, v7, v8, v9, v10, v11, v12, v13, v14, v15, v16]
+
         #compute attened image
-        ctxpi = get_layer('image_attention')[1](tparams,[pi,h_],options=options)
+        ctxpi = get_layer('image_attention')[1](tparams_i,[pi,h_],options=options)
         
         #compute z
-        kl, z, g_x = get_layer('variational')[1](tparams,[ctxpi,h_,x],options,mask=m_, training=False)
+        kl, z, g_x = get_layer('variational')[1](tparams_v,[ctxpi,h_],options,mask=m_,nsteps=1, training=False)
         
         preact_z = tensor.dot(z,Z)
         preact += preact_z
@@ -526,37 +565,58 @@ def variational_gru_layer(tparams, state_below, options, prefix='variational_gru
         h = m_[:, None] * h + (1. - m_)[:, None] * h_
 
         return [h,g_x]
+
     #pi_seq = pis.dimshuffle(,0,1,2)
     seqs = [mask, x, state_below_, state_belowx]
     nsteps = x.shape[0]
+    nn = x.shape[1]
     if not one_step:
-        #init_states = [h0, tensor.alloc(0.,1), tensor.alloc(0., n_samples, options['n_words_src'])]
-        init_states = [h0, tensor.alloc(0.,1), tensor.alloc(0.,n_samples,options['dim_pic'])]
+        init_states = [h0, tensor.alloc(0.,1), tensor.alloc(0., n_samples, options['n_words_src'])]
+
     _step = _step_slice
     shared_vars = [tparams[_p(prefix, 'U')],
                    tparams[_p(prefix, 'Ux')],
                    tparams[_p(prefix, 'Z')],
-                   tparams[_p(prefix, 'Zx')],pi
-                   ]
+                   tparams[_p(prefix, 'Zx')],
+                   tparams[_p('image_attention', 'U')],
+                   tparams[_p('image_attention', 'W')],
+                   tparams[_p('image_attention', 'b')],
+                   tparams[_p('variational','W_pri')],
+                   tparams[_p('variational','W_pri_b')],
+                   tparams[_p('variational','W_pri_mu')],
+                   tparams[_p('variational','W_pri_mu_b')],
+                   tparams[_p('variational','W_pri_sigma')],
+                   tparams[_p('variational','W_pri_sigma_b')],
+                   tparams[_p('variational','W_post')],
+                   tparams[_p('variational','W_post_b')],
+                   tparams[_p('variational','W_post_mu')],
+                   tparams[_p('variational','W_post_mu_b')],
+                   tparams[_p('variational','W_post_sigma')],
+                   tparams[_p('variational','W_post_sigma_b')],
+                   tparams[_p('variational','W_z')],
+                   tparams[_p('variational','W_dec_mu')],
+                   tparams[_p('variational','W_dec_mu_b')],
+                   tparams[_p('variational','W_dec_x')],
+                   tparams[_p('variational','W_dec_x_b')],
+                   pi,nn]
     if not one_step:
         rval, updates = theano.scan(_step,
                                 sequences=seqs,
                                 outputs_info=init_states,
                                 non_sequences=shared_vars,
                                 name=_p(prefix, '_layers'),
-                                #n_steps=nsteps,
-                                n_steps=1,
+                                n_steps=nsteps,
                                 profile=False,
-                                    strict=False)
+                                    strict=True)
     else:
+        seqs = [mask, state_below_, state_belowx]
         _step = _step_slice_sample
-        rval = _step(*(seqs + [init_state,None] + shared_vars))
+        rval = _step(*(seqs + [init_state, None] + shared_vars))
         return rval[0],rval[1]
     hs = rval[0]
     kl_cost = tensor.sum(rval[1])
     g_xs = rval[2]
-    return kl_cost,g_xs
-
+    return kl_cost, g_xs
 
 
 def init_params_vrnn(options):
@@ -585,19 +645,18 @@ def build_model(tparams, options, training=True):
     # description string: #words x #samples
     x = tensor.matrix('x', dtype='int64')
     x_mask = tensor.matrix('x_mask', dtype='float32')
-    pi = tensor.tensor3('pi', dtype='float32')
+    pi = tensor.matrix('pi', dtype='float32')
+    pi3 = pi.reshape((pi.shape[0],196, 512))
 
     n_timesteps = x.shape[0]
     n_samples = x.shape[1]
-
-    emb = tparams['Wemb'][x.flatten()]
+    x_flat = x.flatten()
+    emb = tparams['Wemb'][x_flat]
     emb = emb.reshape([n_timesteps, n_samples, options['dim_word']])
 
-    kl_cost, g_xs = get_layer('variational_gru')[1](tparams, [pi, emb], options, mask=x_mask)
+    kl_cost, g_xs = get_layer('variational_gru')[1](tparams, [pi3, emb], options, mask=x_mask)
 
-    x_flat = x.flatten()
     x_flat_idx = tensor.arange(x_flat.shape[0]) * options['n_words_src'] + x_flat
-    
     #cost
 
     cost = -tensor.log(g_xs.flatten()[x_flat_idx])
@@ -610,26 +669,29 @@ def build_model(tparams, options, training=True):
 
 #build sampler for captioning
 def build_sampler(tparams, options, trng, use_noise):
-    x = tensor.vector('x', dtype='int64')
-    pi = tensor.matrix('pi', dtype='float32')
-    n_timesteps = x.shape[0]
-    n_samples = x.shape[1]
+    sample_x = tensor.vector('sample_x', dtype='int64')
+    sample_pi = tensor.matrix('sample_pi', dtype='float32')
+    #n_timesteps = x.shape[0]
+    n_samples = 1
 
-    emb = tensor.switch(x[:, None] < 0,
+    emb = tensor.switch(sample_x[:, None] < 0,
                         tensor.alloc(0., 1, tparams['Wemb'].shape[1]),
-                        tparams['Wemb'][x])
-    mean_pi = tensor.mean(pi,axis=0)
-    init_state = get_layer('ff')[1](tparams, mean_pi, options, prefix='ff_init_state', activ='tanh')
-    init_inps = [pi]
-    init_out = init_state
+                        tparams['Wemb'][sample_x])
+    
+    mean_pi = tensor.mean(sample_pi,axis=0)
+    ini_state = get_layer('ff')[1](tparams, mean_pi, options, prefix='ff_init_state', activ='tanh')
+    init_inps = [sample_pi]
+    init_out = ini_state
     f_init = theano.function(init_inps, init_out, name='f_init', profile=profile)
-    h, g_x_prob = get_layer('variational_gru')[1](tparams, [pi,emb], options,one_step=True, init_state=init_state)
 
+    init_state = tensor.vector('init_state', dtype='float32')
+    h, g_x_prob = get_layer('variational_gru')[1](tparams, [sample_pi, emb], options, one_step=True, init_state=init_state)
+    next_h = h.reshape((options['dim'],))
     next_sample = trng.multinomial(pvals=g_x_prob).argmax(1)
 
     print 'Building f_next...'
-    inps = [x,pi,init_state]
-    out = [g_x_prob, next_sample, h]
+    inps = [sample_x, sample_pi,init_state]
+    out = [g_x_prob, next_sample, next_h]
     f_next = theano.function(inps, out, name='f_next', profile=profile)
     print 'Done'
 
@@ -644,7 +706,8 @@ def gen_sample(tparams, f_init, f_next, x, pi, options, trng=None, k=1, maxlen=3
     if k > 1:
         assert not stochastic, \
             'Beam search does not support stochastic sampling'
-
+    pi = numpy.array(pi, dtype='float32')
+    pi = pi.reshape((196,512))
     sample = []
     sample_score = []
     if stochastic:
@@ -662,11 +725,10 @@ def gen_sample(tparams, f_init, f_next, x, pi, options, trng=None, k=1, maxlen=3
     next_w = -1 * numpy.ones((1,)).astype('int64')
     
     for ii in xrange(maxlen):
-        ctx = numpy.tile(ctx0, [live_k, 1])
+        #ctx = numpy.tile(ctx0, [live_k, 1])
         inps = [next_w, pi, next_state]
         ret = f_next(*inps)
         next_p, next_w, next_state = ret[0], ret[1], ret[2]
-
         if stochastic:
             if argmax:
                 nw = next_p[0].argmax()
@@ -738,10 +800,10 @@ def pred_probs(f_log_probs, prepare_data, options, iterator, verbose=True):
 
     n_done = 0
 
-    for x, y, pi in iterator:
+    for x, pi in iterator:
         n_done += len(x)
 
-        x, x_mask, pi = prepare_data(x, y, n_words_src=options['n_words_src'])
+        x, x_mask, pi = prepare_data(x, images = pi, n_words_src=options['n_words_src'])
 
         pprobs = f_log_probs(x, x_mask, pi)
         for pp in pprobs:
@@ -758,13 +820,13 @@ def pred_probs(f_log_probs, prepare_data, options, iterator, verbose=True):
 
 # optimizers
 # name(hyperp, tparams, grads, inputs (list), cost) = f_grad_shared, f_update
-def adam(lr, tparams, grads, inp, cost, beta1=0.9, beta2=0.999, e=1e-8):
+def adam(lr, tparams, grads, inp, cost, kl_cost, g_xs, x, beta1=0.9, beta2=0.999, e=1e-8):
 
     gshared = [theano.shared(p.get_value() * 0., name='%s_grad' % k)
                for k, p in tparams.iteritems()]
     gsup = [(gs, g) for gs, g in zip(gshared, grads)]
 
-    f_grad_shared = theano.function(inp, cost, updates=gsup, profile=profile)
+    f_grad_shared = theano.function(inp, [cost,kl_cost, g_xs, x], updates=gsup, profile=profile)
 
     updates = []
 
@@ -936,7 +998,7 @@ def train(dim_word=100,  # word vector dimensionality
             model_options["dimv"]=dimv
 
     print 'Loading data'
-    train = TextIterator(valid_datasets[0], valid_datasets[1],
+    train = TextIterator(datasets[0], datasets[1],
                          dictionaries[0],
                          n_words_source=n_words_src,
                          batch_size=batch_size,
@@ -982,7 +1044,7 @@ def train(dim_word=100,  # word vector dimensionality
 
     # before any regularizer
     print 'Building f_log_probs...',
-    f_log_probs = theano.function(inps, kl_cost, profile=profile,on_unused_input='ignore')
+    f_log_probs = theano.function(inps, cost, profile=profile, on_unused_input='ignore')
     print 'Done'
     
     #f_log_probs for validation
@@ -1033,7 +1095,7 @@ def train(dim_word=100,  # word vector dimensionality
     # compile the optimizer, the actual computational graph is compiled here
     lr = tensor.scalar(name='lr')
     print 'Building optimizers...',
-    f_grad_shared, f_update = eval(optimizer)(lr, tparams, grads, inps, cost, kl_cost)
+    f_grad_shared, f_update = eval(optimizer)(lr, tparams, grads, inps, cost, kl_cost, g_xs, x)
     print 'Done'
 
     print 'Optimization'
@@ -1076,8 +1138,26 @@ def train(dim_word=100,  # word vector dimensionality
             ud_start = time.time()
 
             # compute cost, grads and copy grads to shared variables
-            cost, kl_cost = f_grad_shared(x, x_mask, pi)
-
+            cost, kl_cost, g_xs, xs = f_grad_shared(x, x_mask, pi)
+            print xs.shape
+            for ww in xs[:,0]:
+                if ww == 0:
+                    break
+                if ww in worddicts_r[0]:
+                    print worddicts_r[0][ww],
+                else:
+                    print 'UNK',
+            print ""
+            print g_xs.shape
+            for ww in g_xs[:,0]:
+                w_idx = numpy.argmax(ww)
+                if w_idx == 0:
+                    break
+                if w_idx in worddicts_r[0]:
+                    print worddicts_r[0][w_idx],
+                else:
+                    print 'UNK',
+            print ""
             # do the update on parameters
             f_update(lrate)
 
@@ -1091,7 +1171,7 @@ def train(dim_word=100,  # word vector dimensionality
 
             # verbose
             if numpy.mod(uidx, dispFreq) == 0:
-                print 'Epoch ', eidx, 'Update ', uidx, 'Cost ', cost, 'UD ', ud, 'kl-cost ', kl_cost
+                print 'Epoch ', eidx, 'Update ', uidx, 'Cost ', cost, 'UD ', ud, 'kl-cost ', kl_cost, 'likelihood', cost-kl_cost
 
             # save the best model so far, in addition, save the latest model
             # into a separate file with the iteration number for external eval
@@ -1121,7 +1201,7 @@ def train(dim_word=100,  # word vector dimensionality
                 for jj in xrange(numpy.minimum(5, x.shape[1])):
                     stochastic = True
                     sample, score = gen_sample(tparams, f_init, f_next,
-                                               x[:, jj][:, None],
+                                            x[:, jj][:, None],  pi[jj],
                                                model_options, trng=trng, k=1,
                                                maxlen=30,
                                                stochastic=stochastic,
@@ -1135,7 +1215,7 @@ def train(dim_word=100,  # word vector dimensionality
                         else:
                             print 'UNK',
                     print
-                    print 'Truth ', jj, ' : ',
+                    """print 'Truth ', jj, ' : ',
                     for vv in y[:, jj]:
                         if vv == 0:
                             break
@@ -1144,6 +1224,7 @@ def train(dim_word=100,  # word vector dimensionality
                         else:
                             print 'UNK',
                     print
+                    """
                     print 'Sample ', jj, ': ',
                     if stochastic:
                         ss = sample
@@ -1153,8 +1234,8 @@ def train(dim_word=100,  # word vector dimensionality
                     for vv in ss:
                         if vv == 0:
                             break
-                        if vv in worddicts_r[1]:
-                            print worddicts_r[1][vv],
+                        if vv in worddicts_r[0]:
+                            print worddicts_r[0][vv],
                         else:
                             print 'UNK',
                     print

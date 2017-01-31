@@ -4,7 +4,7 @@ import argparse
 
 print "This is MVNMT"
 
-from change_scan import train
+from vrnn_captioning import train
 
 
 def main(job_id, params):
@@ -50,8 +50,8 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     main(0, {
-        'model': ['%s/models/mvnmt/model_mvnmt.npz' % basedir],
-        'fine_tuning_load':['%s/models/vnmt/model_vnmt.npz' % basedir],
+        'model': ['%s/models/vrnn/model_mvnmt.npz' % basedir],
+        'fine_tuning_load':['%s/models/vrnn/model_vnmt.npz' % basedir],
         'dim_word': [300],
         'dim': [200],
         'dimv': [200],
@@ -63,7 +63,7 @@ if __name__ == '__main__':
         'decay-c': [0.0001],
         'clip-c': [1.],
         'use-dropout': [False],
-        'learning-rate': [0.0001],
+        'learning-rate': [0.001],
         #'learning-rate': [1.0],
         'reload': [args.load],
         'fine_tuning': [args.fine_tuning]})
