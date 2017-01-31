@@ -4,7 +4,7 @@ import argparse
 
 print "This is MVNMT"
 
-from change_scan import train
+from captioning import train
 
 
 def main(job_id, params):
@@ -28,8 +28,8 @@ def main(job_id, params):
                      maxlen=30,
                      batch_size=128,
                      valid_batch_size=64,
-                     datasets=['%s/flickr30k/bitext.val.en.tok.txt' % basedir,
-                               '%s/flickr30k/kelvin_feature/dev-cnn.npy' % basedir],
+                     datasets=['%s/flickr30k/bitext.train.en.tok.txt' % basedir,
+                               '%s/flickr30k/kelvin_feature/train-cnn.npy' % basedir],
                      valid_datasets=['%s/flickr30k/bitext.val.en.tok.txt' % basedir,
                                      '%s/flickr30k/kelvin_feature/dev-cnn.npy' % basedir],
                      dictionaries=['%s/flickr30k/bitext.train.en.tok.txt.pkl' % basedir],
@@ -63,7 +63,7 @@ if __name__ == '__main__':
         'decay-c': [0.0001],
         'clip-c': [1.],
         'use-dropout': [False],
-        'learning-rate': [0.0001],
+        'learning-rate': [0.001],
         #'learning-rate': [1.0],
         'reload': [args.load],
         'fine_tuning': [args.fine_tuning]})
