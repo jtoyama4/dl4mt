@@ -6,8 +6,8 @@ import argparse
 import numpy
 import cPickle as pkl
 
-from mvnmt import (build_sampler, gen_sample, load_params,
-                 init_params, init_tparams)
+from vrnn_captioning import (build_sampler, gen_sample, load_params,
+                 init_params_vrnn, init_tparams)
 
 from multiprocessing import Process, Queue
 
@@ -20,7 +20,7 @@ def translate_model(queue, rqueue, pid, model, options, k, normalize, n_best):
     use_noise = shared(numpy.float32(0.))
 
     # allocate model parameters
-    params = init_params(options)
+    params = init_params_vrnn(options)
 
     # load model parameters and set theano shared variables
     params = load_params(model, params)
@@ -29,11 +29,11 @@ def translate_model(queue, rqueue, pid, model, options, k, normalize, n_best):
     # word index
     f_init, f_next = build_sampler(tparams, options, trng, use_noise)
 
-    def _translate(seq):
+    def _translate(seq,image):
         # sample given an input sequence and obtain scores
         sample, score = gen_sample(tparams, f_init, f_next,
-                                   numpy.array(seq).reshape([len(seq), 1]),
-                                   options, trng=trng, k=k, maxlen=200,
+                                   numpy.array(seq), numpy.array(image).reshape((196,512)),
+                                   options, trng=trng, k=k, maxlen=30,
                                    stochastic=False, argmax=False)
 
         # normalize scores according to sequence lengths
@@ -45,22 +45,23 @@ def translate_model(queue, rqueue, pid, model, options, k, normalize, n_best):
         else:
             sidx = numpy.argmin(score)
         return numpy.array(sample)[sidx], numpy.array(score)[sidx]
-
+        #return numpy.array(sample)[sidx], numpy.array(score)
+        
     while True:
         req = queue.get()
         if req is None:
             break
 
-        idx, x = req[0], req[1]
+        idx, x, pi = req[0], req[1], req[2]
         print pid, '-', idx
-        seq, scores = _translate(x)
+        seq, scores = _translate(x, pi)
 
         rqueue.put((idx, seq, scores))
 
     return
 
 
-def main(model, dictionary, dictionary_target, source_file, saveto, k=5,
+def main(model, dictionary, dictionary_target, source_file, image_file, saveto, k=5,
          normalize=False, n_process=5, chr_level=False, n_best=1):
 
     # load model model_options
@@ -103,13 +104,15 @@ def main(model, dictionary, dictionary_target, source_file, saveto, k=5,
             for w in cc:
                 if w == 0:
                     break
-                ww.append(word_idict_trg[w])
+                ww.append(word_idict[w])
             capsw.append(' '.join(ww))
         return capsw
 
-    def _send_jobs(fname):
+    def _send_jobs(fname, image_f):
         with open(fname, 'r') as f:
-            for idx, line in enumerate(f):
+            idx = 0
+            images = numpy.load(image_f)
+            for line, image in zip(f,images):
                 if chr_level:
                     words = list(line.decode('utf-8').strip())
                 else:
@@ -117,8 +120,9 @@ def main(model, dictionary, dictionary_target, source_file, saveto, k=5,
                 x = map(lambda w: word_dict[w] if w in word_dict else 1, words)
                 x = map(lambda ii: ii if ii < options['n_words'] else 1, x)
                 x += [0]
-                queue.put((idx, x))
-        return idx+1
+                queue.put((idx, x, image))
+                idx += 1
+        return idx
 
     def _finish_processes():
         for midx in xrange(n_process):
@@ -136,7 +140,8 @@ def main(model, dictionary, dictionary_target, source_file, saveto, k=5,
         return trans, scores
 
     print 'Translating ', source_file, '...'
-    n_samples = _send_jobs(source_file)
+    n_samples = _send_jobs(source_file, image_file)
+    print 'send jobs...'
     trans, scores = _retrieve_jobs(n_samples)
     _finish_processes()
 
@@ -171,10 +176,11 @@ if __name__ == "__main__":
     parser.add_argument('dictionary', type=str)
     parser.add_argument('dictionary_target', type=str)
     parser.add_argument('source', type=str)
+    parser.add_argument('image', type=str)
     parser.add_argument('saveto', type=str)
 
     args = parser.parse_args()
 
-    main(args.model, args.dictionary, args.dictionary_target, args.source,
+    main(args.model, args.dictionary, args.dictionary_target, args.source, args.image,
          args.saveto, k=args.k, normalize=args.n, n_process=args.p,
          chr_level=args.c, n_best=args.b)

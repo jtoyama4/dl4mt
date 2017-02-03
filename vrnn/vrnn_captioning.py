@@ -250,16 +250,18 @@ def image_attention_layer(tparams, state_below, options, prefix='image_attention
     if p_i.ndim == 3:
         p_ih = p_i + p_h[:,None,:]
     else:
-        p_ih = p_i + p_h[None,:]
+        p_i = p_i.reshape((1,p_i.shape[0], p_i.shape[1]))
+        p_ih = p_i + p_h[:,None,:]
     e = tensor.dot(tensor.tanh(p_ih), b)
     alpha_shp = e.shape
     alpha = tensor.nnet.softmax(e.reshape([alpha_shp[0], alpha_shp[1]]))
-    if p_i.ndim == 3:
+    """if p_i.ndim == 3:
         ctx = tensor.sum(state_below[0] * alpha[:,:,None], axis=1)
     else:
         alpha_sample = alpha.reshape((alpha.shape[0],))
-        ctx = tensor.sum(state_below[0] * alpha_sample[:,None], axis=0)
-    
+        ctx = tensor.sum(state_below[0] * alpha_sample[:,None], axis=0) 
+    """
+    ctx = tensor.sum(state_below[0] * alpha[:,:,None], axis=1)
     return ctx
     
 #variation layer
@@ -315,7 +317,7 @@ def param_init_variational(options, params, prefix='variational', nin=None, dim=
     params[_p(prefix, "W_z_2")] = W_z_2
 
     #generate x (phi tau dec)
-    W_dec_1 = numpy.concatenate((norm_weight(dim_l,dim_l), norm_weight(dim,dim_l)),axis=0)
+    W_dec_1 = numpy.concatenate((norm_weight(dim_l,dim_l), norm_weight(dim,dim_l), norm_weight(options['dim_word'],dim_l)),axis=0)
     params[_p(prefix, 'W_dec_1')] = W_dec_1
     params[_p(prefix, 'W_dec_1_b')] = numpy.zeros((dim_l,)).astype('float32')
 
@@ -342,15 +344,15 @@ def variational_layer(tparams, state_below, options, prefix='variational', mask=
     ctxpi = state_below[0]
     h_ = state_below[1]
     #nsteps = h_.shape[0]
-    if ctxpi.ndim == 2:
+    """if ctxpi.ndim == 2:
         training = True
-    if h_.ndim == 1:
-        training = False
-    if not training:
-        nsteps = 1
+    """
         
     if training:
         _x = state_below[2]
+        prev_x = state_below[3]
+    else:
+        prev_x = state_below[2]
 
     W_pri_1 = tparams[0]
     W_pri_1_b = tparams[1]
@@ -391,7 +393,9 @@ def variational_layer(tparams, state_below, options, prefix='variational', mask=
         post_mu = tensor.dot(post_2, W_post_mu) + W_post_mu_b
         post_sigma = tensor.nnet.softplus(tensor.dot(post_2, W_post_sigma) + W_post_sigma_b)
     else:
-        pri_1 = tensor.dot(concatenate([ctxpi,h_],axis=0),W_pri_1) + W_pri_1_b
+        #assert h_.ndim 
+        #ctxpi = ctxpi.reshape((1,ctxpi.shape[0]))
+        pri_1 = tensor.dot(concatenate([ctxpi,h_],axis=1),W_pri_1) + W_pri_1_b
         pri_2 = tensor.dot(pri_1, W_pri_2) + W_pri_2_b
         pri_mu = tensor.dot(pri_2, W_pri_mu) + W_pri_mu_b
         pri_sigma = tensor.nnet.softplus(tensor.dot(pri_2,W_pri_sigma) + W_pri_sigma_b)
@@ -421,7 +425,7 @@ def variational_layer(tparams, state_below, options, prefix='variational', mask=
 
     seqs = [pri_mu, pri_sigma, normal_noise]
     if not training:
-        seqs = [pri_mu.reshape((1,dimv)), pri_sigma, normal_noise]
+        seqs = [pri_mu, pri_sigma, normal_noise]
     
     sample_func = lambda m,s,n,z: _gaussian_noise_step(m,s,n,z,add_noise=False)
     if training:
@@ -437,15 +441,21 @@ def variational_layer(tparams, state_below, options, prefix='variational', mask=
     encoded_z = tensor.dot(sample_z, W_z_1)
     encoded_z = tanh(tensor.dot(encoded_z, W_z_2))
     #generate_mu = tensor.dot(concatenate([encoded_z, h_],axis=1) , W_dec_mu) + W_dec_mu_b
+    
+    
     if training:
-        dec_1 = tensor.dot(concatenate([encoded_z, h_],axis=1), W_dec_1) + W_dec_1_b
+        dec_1 = tensor.dot(concatenate([encoded_z, h_, prev_x],axis=1), W_dec_1) + W_dec_1_b
         dec_2 = tensor.dot(dec_1, W_dec_2) + W_dec_2_b
     else:
-        dec_1 = tensor.dot(concatenate([encoded_z, h_[None,:]],axis=1), W_dec_1) + W_dec_1_b
+        dec_1 = tensor.dot(concatenate([encoded_z, h_, prev_x],axis=1), W_dec_1) + W_dec_1_b
         dec_2 = tensor.dot(dec_1, W_dec_2) + W_dec_2_b
     
     x_mu = tensor.dot(dec_2, W_dec_mu) + W_dec_mu_b
     x_prob = tensor.nnet.softmax(x_mu)
+    """if training:
+        next_word = None
+    else:
+        next_word = x_prob.argmax()"""
     return kl_cost, sample_z, x_prob
 
 #GRU layer
@@ -491,14 +501,18 @@ def param_init_variational_gru(options, params, prefix='variational_gru', nin=No
     #params[_p(prefix, 'W_init')] = W_init
     return params
 
-def variational_gru_layer(tparams, state_below, options, prefix='variational_gru', mask=None, one_step=False,init_state=None, **kwargs):
+def variational_gru_layer(tparams, state_below, options, prefix='variational_gru', mask=None, one_step=False,init_state=None, prev_x=None,**kwargs):
     #pis (batch, 196, 512)
     #xs  (seq, batch, nin)
     if one_step:
         assert init_state, 'init_state must be provided when sampling'
-    
+        assert prev_x, 'prev x must be provided when sampling'
+
     pi = state_below[0]
     x = state_below[1]
+    shift_x = tensor.zeros_like(x)
+    shift_x = tensor.set_subtensor(shift_x[1:], x[:-1])
+    
     if one_step:
         n_samples = 1
     else:
@@ -528,7 +542,7 @@ def variational_gru_layer(tparams, state_below, options, prefix='variational_gru
     
     # step function to be used by scan
     # arguments    | sequences |outputs-info| non-seqs
-    def _step_slice(m_, x, x_, xx_, h_, kl, gx, U, Ux, Z, Zx, i0, i1, i2, v0, v1, v2, v3, v4, v5, v6, v7, v8, v9, v10, v11, v12, v13, v14, v15, v16, v17, v18, v19, v20, v21, v22, v23, pi, n):
+    def _step_slice(m_, x, prevx, x_, xx_, h_, kl, gx, U, Ux, Z, Zx, i0, i1, i2, v0, v1, v2, v3, v4, v5, v6, v7, v8, v9, v10, v11, v12, v13, v14, v15, v16, v17, v18, v19, v20, v21, v22, v23, pi, n):
         preact = tensor.dot(h_, U)
         preact += x_
         tparams_i = [i0, i1, i2]
@@ -537,7 +551,7 @@ def variational_gru_layer(tparams, state_below, options, prefix='variational_gru
         ctxpi = get_layer('image_attention')[1](tparams_i,[pi,h_],options=options)
         
         #compute z
-        kl, z, g_x = get_layer('variational')[1](tparams_v,[ctxpi,h_,x],options,mask=m_,nsteps=n, training=True)
+        kl, z, g_x = get_layer('variational')[1](tparams_v,[ctxpi, h_, x, prevx],options,mask=m_,nsteps=n, training=True)
         
         preact_z = tensor.dot(z,Z)
         preact += preact_z
@@ -571,7 +585,7 @@ def variational_gru_layer(tparams, state_below, options, prefix='variational_gru
         ctxpi = get_layer('image_attention')[1](tparams_i,[pi,h_],options=options)
         
         #compute z
-        kl, z, g_x = get_layer('variational')[1](tparams_v,[ctxpi,h_],options,mask=m_,nsteps=1, training=False)
+        kl, z, g_x = get_layer('variational')[1](tparams_v,[ctxpi,h_, gx],options,mask=m_,nsteps=n, training=False)
         
         preact_z = tensor.dot(z,Z)
         preact += preact_z
@@ -592,15 +606,17 @@ def variational_gru_layer(tparams, state_below, options, prefix='variational_gru
         h = u * h_ + (1. - u) * h
         h = m_[:, None] * h + (1. - m_)[:, None] * h_
 
-        return [h,g_x]
+        return [h, g_x]
 
     #pi_seq = pis.dimshuffle(,0,1,2)
-    seqs = [mask, x, state_below_, state_belowx]
+    seqs = [mask, x, shift_x, state_below_, state_belowx]
     nsteps = x.shape[0]
     nn = x.shape[1]
+    if one_step:
+        nn = init_state.shape[0]
     if not one_step:
         init_states = [h0, tensor.alloc(0.,1), tensor.alloc(0., n_samples, options['n_words_src'])]
-
+    
     _step = _step_slice
     shared_vars = [tparams[_p(prefix, 'U')],
                    tparams[_p(prefix, 'Ux')],
@@ -646,7 +662,7 @@ def variational_gru_layer(tparams, state_below, options, prefix='variational_gru
     else:
         seqs = [mask, state_below_, state_belowx]
         _step = _step_slice_sample
-        rval = _step(*(seqs + [init_state, None] + shared_vars))
+        rval = _step(*(seqs + [init_state, prev_x] + shared_vars))
         return rval[0],rval[1]
     hs = rval[0]
     kl_cost = tensor.sum(rval[1])
@@ -706,8 +722,8 @@ def build_model(tparams, options, training=True):
 def build_sampler(tparams, options, trng, use_noise):
     sample_x = tensor.vector('sample_x', dtype='int64')
     sample_pi = tensor.matrix('sample_pi', dtype='float32')
-    #n_timesteps = x.shape[0]
-    n_samples = 1
+    n_timesteps = sample_x.shape[0]
+    n_samples = sample_x.shape[1]
 
     emb = tensor.switch(sample_x[:, None] < 0,
                         tensor.alloc(0., 1, tparams['Wemb'].shape[1]),
@@ -719,14 +735,14 @@ def build_sampler(tparams, options, trng, use_noise):
     init_out = ini_state
     f_init = theano.function(init_inps, init_out, name='f_init', profile=profile)
 
-    init_state = tensor.vector('init_state', dtype='float32')
-    h, g_x_prob = get_layer('variational_gru')[1](tparams, [sample_pi, emb], options, one_step=True, init_state=init_state)
-    next_h = h.reshape((options['dim'],))
+    init_state = tensor.matrix('init_state', dtype='float32')
+    h, g_x_prob = get_layer('variational_gru')[1](tparams, [sample_pi, emb], options, one_step=True, init_state=init_state, prev_x=emb)
+
     next_sample = trng.multinomial(pvals=g_x_prob).argmax(1)
 
     print 'Building f_next...'
     inps = [sample_x, sample_pi,init_state]
-    out = [g_x_prob, next_sample, next_h]
+    out = [g_x_prob, next_sample, h]
     f_next = theano.function(inps, out, name='f_next', profile=profile)
     print 'Done'
 
@@ -758,12 +774,14 @@ def gen_sample(tparams, f_init, f_next, x, pi, options, trng=None, k=1, maxlen=3
     # get initial state of vrnn
     next_state = f_init(pi)
     next_w = -1 * numpy.ones((1,)).astype('int64')
-    
+    next_state = next_state.reshape((1,next_state.shape[0]))
     for ii in xrange(maxlen):
-        #ctx = numpy.tile(ctx0, [live_k, 1])
-        inps = [next_w, pi, next_state]
+        pis = numpy.tile(pi, [live_k, 1])
+        inps = [next_w, pis, next_state]
+        print "try one"
         ret = f_next(*inps)
         next_p, next_w, next_state = ret[0], ret[1], ret[2]
+        print "one_turn"
         if stochastic:
             if argmax:
                 nw = next_p[0].argmax()
@@ -777,7 +795,7 @@ def gen_sample(tparams, f_init, f_next, x, pi, options, trng=None, k=1, maxlen=3
             cand_scores = hyp_scores[:, None] - numpy.log(next_p)
             cand_flat = cand_scores.flatten()
             ranks_flat = cand_flat.argsort()[:(k-dead_k)]
-
+            #next_state = next_state.reshape((1,next_state.shape[0]))
             voc_size = next_p.shape[1]
             trans_indices = ranks_flat / voc_size
             word_indices = ranks_flat % voc_size
@@ -818,6 +836,7 @@ def gen_sample(tparams, f_init, f_next, x, pi, options, trng=None, k=1, maxlen=3
 
             next_w = numpy.array([w[-1] for w in hyp_samples])
             next_state = numpy.array(hyp_states)
+            print next_state.shape
 
     if not stochastic:
         # dump every remaining one
