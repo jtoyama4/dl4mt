@@ -45,7 +45,7 @@ class TextIterator:
     
     def image_reset(self):
         self.count = 0
-        self.image_iter = 0
+        self.image_iter += 1
 
     def next(self):
         if self.end_of_data:
@@ -95,9 +95,15 @@ class TextIterator:
                     break
         except IndexError:
             self.image_reset()
-            if self.image_iter == 4:
+            if self.image_iter == 5:
                 self.image_iter = 0
                 self.end_of_data = True
+                ss = self.source.readline()
+                if ss == "":
+                    print "Data Iteration is succesfully working"
+                else:
+                    print "Data Iteration has something wrong"
+                    sys.exit()
         except IOError:
             self.end_of_data = True
         

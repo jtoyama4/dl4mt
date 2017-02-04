@@ -29,7 +29,7 @@ def main(job_id, params):
                      maxlen=30,
                      batch_size=128,
                      valid_batch_size=64,
-                     datasets=['%s/flickr30k/caption_train.txt' % basedir,
+                     datasets=['%s/flickr30k/s_caption_train.txt' % basedir,
                                '%s/flickr30k/kelvin_feature/train-cnn.npy' % basedir],
                      valid_datasets=['%s/flickr30k/bitext.val.en.tok.txt' % basedir,
                                      '%s/flickr30k/kelvin_feature/dev-cnn.npy' % basedir],

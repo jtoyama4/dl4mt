@@ -880,7 +880,7 @@ def adam(lr, tparams, grads, inp, cost, kl_cost, g_xs, x, beta1=0.9, beta2=0.999
                for k, p in tparams.iteritems()]
     gsup = [(gs, g) for gs, g in zip(gshared, grads)]
 
-    f_grad_shared = theano.function(inp, [cost,kl_cost, g_xs, x], updates=gsup, profile=profile)
+    f_grad_shared = theano.function(inp, [cost,kl_cost], updates=gsup, profile=profile)
 
     updates = []
 
@@ -1192,8 +1192,8 @@ def train(dim_word=100,  # word vector dimensionality
             ud_start = time.time()
 
             # compute cost, grads and copy grads to shared variables
-            cost, kl_cost, g_xs, xs = f_grad_shared(x, x_mask, pi)
-            print 'Truth'
+            cost, kl_cost = f_grad_shared(x, x_mask, pi)
+            """print 'Truth'
             for ww in xs[:,5]:
                 if ww == 0:
                     break
@@ -1211,7 +1211,8 @@ def train(dim_word=100,  # word vector dimensionality
                     print worddicts_r[0][w_idx],
                 else:
                     print 'UNK',
-            print 
+            print
+            """
             # do the update on parameters
             f_update(lrate)
 
