@@ -33,6 +33,7 @@ class TextIterator:
         self.end_of_data = False
         
         self.count = 0
+        self.image_iter = 0
 
     def __iter__(self):
         return self
@@ -41,6 +42,10 @@ class TextIterator:
         self.source.seek(0)
         #self.target.seek(0)
         self.count = 0
+    
+    def image_reset(self):
+        self.count = 0
+        self.image_iter = 0
 
     def next(self):
         if self.end_of_data:
@@ -55,7 +60,7 @@ class TextIterator:
         try:
             # actual work here
             while True:
-
+                next_image = self.image[self.count]
                 # read from source file and map to word index
                 ss = self.source.readline()
                 if ss == "":
@@ -76,21 +81,26 @@ class TextIterator:
                 if self.n_words_target > 0:
                     tt = [w if w < self.n_words_target else 1 for w in tt]
                 """
-                if len(ss) > self.maxlen:
+                if len(ss) > self.maxlen:                   
                     self.count += 1
                     continue
                 
                 source.append(ss)
                 #target.append(tt)
-                image.append(self.image[self.count])
+                image.append(next_image)
 
                 self.count += 1
 
                 if len(source) >= self.batch_size:
                     break
+        except IndexError:
+            self.image_reset()
+            if self.image_iter == 4:
+                self.image_iter = 0
+                self.end_of_data = True
         except IOError:
             self.end_of_data = True
-
+        
         if len(source) <= 0:
             self.end_of_data = False
             self.reset()

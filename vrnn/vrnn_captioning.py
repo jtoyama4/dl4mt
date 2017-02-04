@@ -778,10 +778,10 @@ def gen_sample(tparams, f_init, f_next, x, pi, options, trng=None, k=1, maxlen=3
     for ii in xrange(maxlen):
         pis = numpy.tile(pi, [live_k, 1])
         inps = [next_w, pis, next_state]
-        print "try one"
+
         ret = f_next(*inps)
         next_p, next_w, next_state = ret[0], ret[1], ret[2]
-        print "one_turn"
+
         if stochastic:
             if argmax:
                 nw = next_p[0].argmax()
