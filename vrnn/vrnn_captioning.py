@@ -114,6 +114,9 @@ def tanh(x):
 def linear(x):
     return x
 
+def relu(x):
+    return tensor.nnet.relu(x)
+
 
 def concatenate(tensor_list, axis=0):
     """
@@ -313,6 +316,12 @@ def param_init_variational(options, params, prefix='variational', nin=None, dim=
     W_z_1 = norm_weight(dimv,dim_l)
     params[_p(prefix, "W_z_1")] = W_z_1
 
+    W_z_1_2 = norm_weight(dim_l,dim_l)
+    params[_p(prefix, "W_z_1_2")] = W_z_1_2
+
+    W_z_1_3 = norm_weight(dim_l,dim_l)
+    params[_p(prefix, "W_z_1_3")] = W_z_1_3
+
     W_z_2 = norm_weight(dim_l,dim_l)
     params[_p(prefix, "W_z_2")] = W_z_2
 
@@ -380,6 +389,10 @@ def variational_layer(tparams, state_below, options, prefix='variational', mask=
     W_dec_2_b = tparams[21]
     W_dec_mu = tparams[22]
     W_dec_mu_b = tparams[23]
+
+    #additional params
+    W_z_1_2 = tparams[24]
+    W_z_1_3 = tparams[25]
     
     #prior
     if training:
@@ -438,17 +451,19 @@ def variational_layer(tparams, state_below, options, prefix='variational', mask=
                               n_steps = nsteps)
     assert sample_z != None, 'man , sample z is NONE!!'    
     
-    encoded_z = tensor.dot(sample_z, W_z_1)
-    encoded_z = tanh(tensor.dot(encoded_z, W_z_2))
+    encoded_z_1 = relu(tensor.dot(sample_z, W_z_1))
+    encoded_z_1_2 = relu(tensor.dot(encoded_z_1, W_z_1_2))
+    encoded_z_2 = relu(tensor.dot(encoded_z_1_2, W_z_1_3))
+    encoded_z = relu((tensor.dot(encoded_z_2, W_z_2)))
     #generate_mu = tensor.dot(concatenate([encoded_z, h_],axis=1) , W_dec_mu) + W_dec_mu_b
     
     
     if training:
         dec_1 = tensor.dot(concatenate([encoded_z, h_, prev_x],axis=1), W_dec_1) + W_dec_1_b
-        dec_2 = tensor.dot(dec_1, W_dec_2) + W_dec_2_b
+        dec_2 = relu(tensor.dot(dec_1, W_dec_2) + W_dec_2_b)
     else:
         dec_1 = tensor.dot(concatenate([encoded_z, h_, prev_x],axis=1), W_dec_1) + W_dec_1_b
-        dec_2 = tensor.dot(dec_1, W_dec_2) + W_dec_2_b
+        dec_2 = relu(tensor.dot(dec_1, W_dec_2) + W_dec_2_b)
     
     x_mu = tensor.dot(dec_2, W_dec_mu) + W_dec_mu_b
     x_prob = tensor.nnet.softmax(x_mu)
@@ -542,11 +557,11 @@ def variational_gru_layer(tparams, state_below, options, prefix='variational_gru
     
     # step function to be used by scan
     # arguments    | sequences |outputs-info| non-seqs
-    def _step_slice(m_, x, prevx, x_, xx_, h_, kl, gx, U, Ux, Z, Zx, i0, i1, i2, v0, v1, v2, v3, v4, v5, v6, v7, v8, v9, v10, v11, v12, v13, v14, v15, v16, v17, v18, v19, v20, v21, v22, v23, pi, n):
+    def _step_slice(m_, x, prevx, x_, xx_, h_, kl, gx, U, Ux, Z, Zx, i0, i1, i2, v0, v1, v2, v3, v4, v5, v6, v7, v8, v9, v10, v11, v12, v13, v14, v15, v16, v17, v18, v19, v20, v21, v22, v23, v24, v25, pi, n):
         preact = tensor.dot(h_, U)
         preact += x_
         tparams_i = [i0, i1, i2]
-        tparams_v = [v0, v1, v2, v3, v4, v5, v6, v7, v8, v9, v10, v11, v12, v13, v14, v15, v16, v17, v18, v19, v20, v21, v22, v23]
+        tparams_v = [v0, v1, v2, v3, v4, v5, v6, v7, v8, v9, v10, v11, v12, v13, v14, v15, v16, v17, v18, v19, v20, v21, v22, v23, v24, v25]
         #compute attened image
         ctxpi = get_layer('image_attention')[1](tparams_i,[pi,h_],options=options)
         
@@ -574,12 +589,12 @@ def variational_gru_layer(tparams, state_below, options, prefix='variational_gru
 
         return [h, kl.reshape((1,)), g_x]
 
-    def _step_slice_sample(m_, x_, xx_, h_, gx, U, Ux, Z, Zx, i0, i1, i2, v0, v1, v2, v3, v4, v5, v6, v7, v8, v9, v10, v11, v12, v13, v14, v15, v16, v17, v18, v19, v20, v21, v22, v23, pi, n):
+    def _step_slice_sample(m_, x_, xx_, h_, gx, U, Ux, Z, Zx, i0, i1, i2, v0, v1, v2, v3, v4, v5, v6, v7, v8, v9, v10, v11, v12, v13, v14, v15, v16, v17, v18, v19, v20, v21, v22, v23, v24, v25, pi, n):
         preact = tensor.dot(h_, U)
         preact += x_
 
         tparams_i = [i0, i1, i2]
-        tparams_v = [v0, v1, v2, v3, v4, v5, v6, v7, v8, v9, v10, v11, v12, v13, v14, v15, v16, v17, v18, v19, v20, v21, v22, v23]
+        tparams_v = [v0, v1, v2, v3, v4, v5, v6, v7, v8, v9, v10, v11, v12, v13, v14, v15, v16, v17, v18, v19, v20, v21, v22, v23, v24 ,v25]
 
         #compute attened image
         ctxpi = get_layer('image_attention')[1](tparams_i,[pi,h_],options=options)
@@ -649,6 +664,8 @@ def variational_gru_layer(tparams, state_below, options, prefix='variational_gru
                    tparams[_p('variational','W_dec_2_b')],
                    tparams[_p('variational','W_dec_mu')],
                    tparams[_p('variational','W_dec_mu_b')],
+                   tparams[_p('variational','W_z_1_2')],
+                   tparams[_p('variational','W_z_1_3')],
                    pi,nn]
     if not one_step:
         rval, updates = theano.scan(_step,

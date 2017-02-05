@@ -51,7 +51,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     main(0, {
-        'model': ['%s/models/vrnn/model_vrnn_captioning.npz' % basedir],
+        'model': ['%s/models/vrnn/model_big_vrnn_captioning.npz' % basedir],
         'fine_tuning_load':['%s/models/vrnn/model_vnmt.npz' % basedir],
         'dim_word': [1000],
         'dim': [1000],
