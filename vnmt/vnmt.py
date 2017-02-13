@@ -355,6 +355,10 @@ def param_init_variation(options, params, prefix='variation',
     W_pri = norm_weight(dimctx,dimv)
     params[_p(prefix, 'W_pri')] = W_pri
     params[_p(prefix, 'W_pri_b')] = numpy.zeros((dimv,)).astype('float32')
+
+    W_pri_pri = norm_weight(dimv, dimv)
+    params[_p(prefix, 'W_pri_pri')] = W_pri_pri
+    params[_p(prefix, 'W_pri_pri_b')] = numpy.zeros((dimv,)).astype('float32')
     
     W_pri_mu = norm_weight(dimv,dimv)
     params[_p(prefix, 'W_pri_mu')] = W_pri_mu
@@ -367,6 +371,10 @@ def param_init_variation(options, params, prefix='variation',
     W_post = numpy.concatenate([norm_weight(dimctx,dimv),norm_weight(dimctx_y,dimv)], axis = 0)
     params[_p(prefix, 'W_post')] = W_post
     params[_p(prefix, 'W_post_b')] = numpy.zeros((dimv,)).astype('float32')
+
+    W_post_post = norm_weight(dimv, dimv)
+    params[_p(prefix, 'W_post_post')] = W_post_post
+    params[_p(prefix, 'W_post_post_b')] = numpy.zeros((dimv,)).astype('float32')
     
     W_post_mu = norm_weight(dimv,dimv)
     params[_p(prefix, 'W_post_mu')] = W_post_mu
@@ -376,6 +384,10 @@ def param_init_variation(options, params, prefix='variation',
     params[_p(prefix, 'W_post_sigma')] = W_post_sigma
     params[_p(prefix, 'W_post_sigma_b')] = numpy.zeros((dimv,)).astype('float32')
     
+    W_enc_z = norm_weight(dimv, dim)
+    params[_p(prefix, 'W_enc_z')] = W_enc_z
+    params[_p(prefix, 'W_enc_z_b')] = numpy.zeros((dim,)).astype('float32')
+
     return params
 
 def variation_layer(tparams, ctx_means, options, prefix='variation', ctx_y_means=None,mask=None,training=True, **kwargs):
@@ -391,9 +403,11 @@ def variation_layer(tparams, ctx_means, options, prefix='variation', ctx_y_means
 
     # prepare h_z' for both posterior and prior
     pri_h = tensor.tanh(tensor.dot(ctx_means, tparams[_p(prefix, 'W_pri')]) + tparams[_p(prefix, 'W_pri_b')])
+    pri_h = tensor.tanh(tensor.dot(pri_h, tparams[_p(prefix, 'W_pri_pri')]) + tparams[_p(prefix, 'W_pri_pri_b')])
     if training:
         post_h = tensor.tanh(tensor.dot(concatenate([ctx_means, ctx_y_means],axis=1), tparams[_p(prefix, 'W_post')]) + tparams[_p(prefix, 'W_post_b')])
-    
+        post_h = tensor.tanh(tensor.dot(post_h, tparams[_p(prefix, 'W_post_post')]) + tparams[_p(prefix, 'W_post_post_b')])
+
     #Gaussian Parameters w.r.t Prior and Posterior
     pri_mu = tensor.dot(pri_h, tparams[_p(prefix, 'W_pri_mu')]) + tparams[_p(prefix, 'W_pri_mu_b')]
     pri_log_sigma = (tensor.dot(pri_h, tparams[_p(prefix, 'W_pri_sigma')]) + tparams[_p(prefix, 'W_pri_sigma_b')]) * 0.5
@@ -433,7 +447,8 @@ def variation_layer(tparams, ctx_means, options, prefix='variation', ctx_y_means
                               outputs_info=[tensor.alloc(0.,dimv)],
                               name="variation_z_%s" % prefix,n_steps = nsteps)
     assert sample_z != None, 'man , sample z is NONE!!'
-
+    
+    sample_z = tensor.tanh(tensor.dot(sample_z, tparams[_p(prefix, 'W_enc_z')]) + tparams[_p(prefix, 'W_enc_z_b')])
     return sample_z, kl_cost
 
 # Conditional GRU layer with Attention
@@ -484,10 +499,10 @@ def param_init_gru_cond(options, params, prefix='gru_cond',
     params[_p(prefix, 'Wcx')] = Wcx
 
     #variation
-    Vc = norm_weight(dimv,dim*2)
+    Vc = norm_weight(dim,dim*2)
     params[_p(prefix, 'Vc')] = Vc
 
-    Vcx = norm_weight(dimv, dim)
+    Vcx = norm_weight(dim, dim)
     params[_p(prefix, 'Vcx')] = Vcx
 
     # attention: combined -> hidden
@@ -1204,12 +1219,14 @@ def train(dim_word=100,  # word vector dimensionality
         print 'Reloading model options'
         with open('%s.pkl' % saveto, 'rb') as f:
             model_options = pkl.load(f)
+            
     
     if fine_tuning and os.path.exists(fine_tuning_load):
         print 'Mode:Fine-tuning'
         with open('%s.pkl' % fine_tuning_load, 'rb') as f:
             model_options = pkl.load(f)
             model_options['dimv'] = dimv
+    model_options['validdir'] = None 
 
     print 'Loading data'
 
