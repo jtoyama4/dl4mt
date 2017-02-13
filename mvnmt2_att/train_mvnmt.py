@@ -38,9 +38,9 @@ def main(job_id, params):
                      dictionaries=['%s/flickr30k/bitext.train.en.tok.txt.pkl' % basedir,
                                    '%s/flickr30k/bitext.train.de.tok.txt.pkl' % basedir],
                      validFreq=1000,
-                     dispFreq=1,
+                     dispFreq=100,
                      saveFreq=1000,
-                     sampleFreq=50,
+                     sampleFreq=200,
                      use_dropout=params['use-dropout'][0],
                      overwrite=False)
     return validerr
@@ -54,8 +54,8 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     main(0, {
-        'model': ['%s/models/mvnmt/model_mvnmt_2_att_tanh_fine.npz' % basedir],
-        'fine_tuning_load':['%s/models/vnmt/model_vnmt.npz' % basedir],
+        'model': ['%s/models/mvnmt/model_mvnmt_2_att.npz' % basedir],
+        'fine_tuning_load':['%s/models/vnmt/model_vnmt_tanh.npz' % basedir],
         'dim_word': [256],
         'dim': [256],
         'dimv': [100],
