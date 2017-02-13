@@ -102,7 +102,7 @@ class TextIterator:
                 # read image
                 # image shape : (num_of_objects, image_feature)
                 cls = self.class_txt.readline()
-                idx = self.get_index(cls,1)
+                idx = self.get_index(cls,4)
                 fc7_global = self.global_fc7[self.count]
                 fc7_global = fc7_global[numpy.newaxis,:]
                 ii = numpy.load(os.path.join(self.image_basedir,self.image_list.readline().strip()))[idx]

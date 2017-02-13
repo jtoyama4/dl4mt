@@ -1,15 +1,6 @@
+
 #!/bin/bash
-#PBS -l nodes=1:ppn=20
-#PBS -l walltime=168:00:00
-#PBS -N session1_default
-#PBS -A course
-#PBS -q GpuQ
 
+mkdir -p result
 
-export THEANO_FLAGS=device=gpu,floatX=float32
-
-cd $PBS_O_WORKDIR
-python ./train_nmt.py
-
-
-
+python train_vnmt.py --dim=256 --dim_word=256 --dimv=512 --decay_c=0.0001 --lr=1.0 --modeldir=cmu_vnmt/ --batchsize=32 --fine_tuning --finetunedir="nmt" 2>&1 | tee result/train.log

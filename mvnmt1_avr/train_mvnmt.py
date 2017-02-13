@@ -52,8 +52,8 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='')
     parser.add_argument('--load',action='store_true',default=False)
     parser.add_argument('--fine_tuning', action='store_true', default=False)
-    parser.add_argument('--modeldir', type=str, default="mvnmt1_plus")
-    parser.add_argument('--finetunedir', type=str, default="best_model/vnmt")
+    parser.add_argument('--modeldir', type=str, default="mvnmt1_avr")
+    parser.add_argument('--finetunedir', type=str, default="vnmt")
     parser.add_argument('--dim', type=str, default=256)
     parser.add_argument('--dim_word', type=int, default=256)
     parser.add_argument('--dimv', type=int, default=512)
@@ -79,7 +79,7 @@ if __name__ == '__main__':
 
     main(0, {
         'basedir': basedir,
-        'model': ['%s/model_mvnmt_top1.npz' % modeldir],
+        'model': ['%s/model_mvnmt.npz' % modeldir],
         'fine_tuning_load':['%s/model_vnmt.npz' % finetunedir],
         'validdir': validdir,
         'scriptdir': scriptdir,
