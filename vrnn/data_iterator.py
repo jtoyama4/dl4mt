@@ -1,6 +1,7 @@
 import cPickle as pkl
 import gzip
 import numpy
+import tables
 
 def fopen(filename, mode='r'):
     if filename.endswith('.gz'):
@@ -18,7 +19,8 @@ class TextIterator:
                  n_words_target=-1):
         self.source = fopen(source, 'r')
         #self.target = fopen(target, 'r')
-        self.image = numpy.load(image)
+        handle = tables.open_file(image, mode='r')
+        self.image = handle.root.feats[:]
         with open(source_dict, 'rb') as f:
             self.source_dict = pkl.load(f)
         #with open(target_dict, 'rb') as f:

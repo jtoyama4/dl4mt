@@ -493,7 +493,7 @@ def variation_layer(tparams, ctx_means, options, prefix='variation', ctx_y_means
 
     enc_z = tensor.tanh(tensor.dot(sample_z, tparams[_p(prefix, 'W_enc_z')]) + tparams[_p(prefix, 'W_enc_z_b')])
 
-    return sample_z, kl_cost
+    return enc_z, kl_cost
 
 # Conditional GRU layer with Attention
 def param_init_gru_cond(options, params, prefix='gru_cond',
@@ -1251,8 +1251,8 @@ def train(dim_word=100,  # word vector dimensionality
           n_words=100000,  # target vocabulary size
           maxlen=100,  # maximum length of the description
           optimizer='adadelta',
-          batch_size=16,
-          valid_batch_size=16,
+          batch_size=32,
+          valid_batch_size=32,
           saveto='model.npz',
           validFreq=1000,
           saveFreq=1000,   # save the parameters after every saveFreq updates

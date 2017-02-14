@@ -26,9 +26,9 @@ def main(job_id, params):
                      clip_c=params['clip-c'][0],
                      lrate=params['learning-rate'][0],
                      optimizer=params['optimizer'][0],
-                     maxlen=30,
-                     batch_size=64,
-                     valid_batch_size=64,
+                     maxlen=50,
+                     batch_size=32,
+                     valid_batch_size=32,
                      datasets=['%s/flickr30k/bitext.train.en.tok.txt' % basedir,
                                '%s/flickr30k/bitext.train.de.tok.txt' % basedir,
                                '%s/flickr30k/kelvin_feature/train-cnn.npy' % basedir],
@@ -54,8 +54,8 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     main(0, {
-        'model': ['%s/models/mvnmt/model_mvnmt_2_att_tanh_fine.npz' % basedir],
-        'fine_tuning_load':['%s/models/vnmt/model_vnmt.npz' % basedir],
+        'model': ['%s/models/mvnmt2_att/model_mvnmt2_att.npz' % basedir],
+        'fine_tuning_load':['%s/models/nmt/model_nmt.npz' % basedir],
         'dim_word': [256],
         'dim': [256],
         'dimv': [100],
@@ -65,7 +65,7 @@ if __name__ == '__main__':
         #'n-words': [30000],
         'n-words': [10211,18723],
         'optimizer': ['adadelta'],
-        'decay-c': [0.001],
+        'decay-c': [0.0005],
         'clip-c': [1.],
         'use-dropout': [False],
         #'learning-rate': [0.0001],

@@ -32,7 +32,7 @@ def main(job_id, params):
                      validFreq=1000,
                      dispFreq=1,
                      saveFreq=1000,
-                     sampleFreq=50,
+                     sampleFreq=100,
                      use_dropout=params['use-dropout'][0],
                      overwrite=False)
     return validerr

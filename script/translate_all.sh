@@ -16,13 +16,14 @@ OUTDIR=$3
 N=1000
 STEP=1000
 
-P=3 # process number
+P=10 # process number
 #K=12 # beam width
-K=12 # beam width
+K=5 # beam width
 SRC_DICT="../flickr30k/bitext.train.en.tok.txt.pkl"
 DST_DICT="../flickr30k/bitext.train.de.tok.txt.pkl"
-SRC="../flickr30k/bitext.test.en.tok.txt"
+SRC="../flickr30k/bitext.val.en.tok.txt"
 OPTION_FILE="$MODEL_DIR/model_$TYPE.npz.pkl"
+IMAGE="../flickr30k/kelvin_feature/dev-cnn.npy"
 if [ "$1" == "nmt" ] ; then
     TRANSLATE_SCRIPT="../session3/translate.py"
 else
@@ -52,7 +53,7 @@ do
     #echo $MODEL
     
     TARGET="$OUTDIR/result.$TYPE.$N.txt"
-    THEANO_FLAGS='device=cpu' python $TRANSLATE_SCRIPT -p $P -k $K -o $OPTION_FILE $MODEL $SRC_DICT $DST_DICT $SRC $TARGET
+    THEANO_FLAGS='device=cpu' python $TRANSLATE_SCRIPT -p $P -k $K -o $OPTION_FILE $MODEL $SRC_DICT $DST_DICT $SRC $IMAGE $TARGET
 
     N=$((N+STEP))
 done

@@ -241,16 +241,17 @@ def param_init_image(options, params, prefix='image', nin=None, nout=None, ortho
         nin = options['dim_pi']
     if nout is None:
         nout = options['dim_pic']
-    params[_p(prefix, 'W')] = norm_weight(nin, nout, scale=0.01, ortho=ortho)
-    params[_p(prefix, 'b')] = numpy.zeros((nout,)).astype('float32')
+    #params[_p(prefix, 'W')] = norm_weight(nin, nout, scale=0.01, ortho=ortho)
+    #params[_p(prefix, 'b')] = numpy.zeros((nout,)).astype('float32')
 
     return params
 
 def image_layer(tparams, state_below, options, prefix='image',
             activ='lambda x:x', **kwargs):
-    return eval(activ)(
-        tensor.dot(state_below, tparams[_p(prefix, 'W')]) +
-        tparams[_p(prefix, 'b')])
+    #image = tensor.dot(state_below, tparams[_p(prefix, 'W')]) + tparams[_p(prefix, 'b')])
+
+    ctx = tensor.sum(state_below, axis=1)
+    return ctx
 
 
 
@@ -356,7 +357,7 @@ def gru_layer(tparams, state_below, options, prefix='gru', mask=None,
 
 def param_init_variation(options, params, prefix='variation',
                          nin=None, dim=None, dimctx=None,dimctx_y=None,dim_pic=None,
-                         nin_nonlin=None, dim_nonlin=None,dimv=None):
+                         nin_nonlin=None, dim_nonlin=None,dimv=None, dim_enc_z=None):
     if nin is None:
         nin = options['dim']
     if dim is None:
@@ -373,10 +374,15 @@ def param_init_variation(options, params, prefix='variation',
         dimv = options['dimv']
     if dim_pic is None:
         dim_pic = options['dim_pic']
+    if dim_enc_z is None:
+        dim_enc_z = options['dim_enc_z']
 
     W_pri_pi = numpy.concatenate([norm_weight(dimctx,dimv), norm_weight(dim_pic,dimv)], axis=0)
     params[_p(prefix, 'W_pri_pi')] = W_pri_pi
     params[_p(prefix, 'W_pri_pi_b')] = numpy.zeros((dimv,)).astype('float32')
+
+    W_pri_pi_pi = norm_weight(dimv, dimv)
+    params[_p(prefix, 'W_pri_pi_pi')] = W_pri_pi_pi
     
     W_pri_mu = norm_weight(dimv,dimv)
     params[_p(prefix, 'W_pri_mu')] = W_pri_mu
@@ -390,6 +396,9 @@ def param_init_variation(options, params, prefix='variation',
     params[_p(prefix, 'W_post_pi')] = W_post_pi
     params[_p(prefix, 'W_post_pi_b')] = numpy.zeros((dimv,)).astype('float32')
     
+    W_post_pi_pi = norm_weight(dimv, dimv)
+    params[_p(prefix, 'W_post_pi_pi')] = W_post_pi_pi
+
     W_post_mu = norm_weight(dimv,dimv)
     params[_p(prefix, 'W_post_mu')] = W_post_mu
     params[_p(prefix, 'W_post_mu_b')] = numpy.zeros((dimv,)).astype('float32')
@@ -397,6 +406,10 @@ def param_init_variation(options, params, prefix='variation',
     W_post_sigma = norm_weight(dimv,dimv)
     params[_p(prefix, 'W_post_sigma')] = W_post_sigma
     params[_p(prefix, 'W_post_sigma_b')] = numpy.zeros((dimv,)).astype('float32')
+
+    W_enc_z = norm_weight(dimv, dim_enc_z)
+    params[_p(prefix, 'W_enc_z')] = W_enc_z
+    params[_p(prefix, 'W_enc_z_b')] = numpy.zeros((dim_enc_z,)).astype('float32')
     
     return params
 
@@ -415,8 +428,10 @@ def variation_layer(tparams, ctx_means, options, prefix='variation', ctx_y_means
 
     # prepare h_z' for both posterior and prior
     pri_h = tensor.tanh(tensor.dot(concatenate([ctx_means, pic], axis=1), tparams[_p(prefix, 'W_pri_pi')]) + tparams[_p(prefix, 'W_pri_pi_b')])
+    pri_h = tensor.tanh(tensor.dot(pri_h, tparams[_p(prefix, 'W_pri_pi_pi')]))
     if training:
         post_h = tensor.tanh(tensor.dot(concatenate([ctx_means, ctx_y_means, pic],axis=1), tparams[_p(prefix, 'W_post_pi')]) + tparams[_p(prefix, 'W_post_pi_b')])
+        post_h = tensor.tanh(tensor.dot(post_h, tparams[_p(prefix, 'W_post_pi_pi')]))
     
     #Gaussian Parameters w.r.t Prior and Posterior
     pri_mu = tensor.dot(pri_h, tparams[_p(prefix, 'W_pri_mu')]) + tparams[_p(prefix, 'W_pri_mu_b')]
@@ -459,11 +474,13 @@ def variation_layer(tparams, ctx_means, options, prefix='variation', ctx_y_means
                               name="variation_z_%s" % prefix,n_steps = nsteps)
     assert sample_z != None, 'man , sample z is NONE!!'
 
-    return sample_z, kl_cost
+    enc_z = tensor.tanh(tensor.dot(sample_z, tparams[_p(prefix, 'W_enc_z')]) + tparams[_p(prefix, 'W_enc_z_b')])
+
+    return enc_z, kl_cost
 
 # Conditional GRU layer with Attention
 def param_init_gru_cond(options, params, prefix='gru_cond',
-                        nin=None, dim=None, dimctx=None,dimv=None,
+                        nin=None, dim=None, dimctx=None,dimv=None,dim_enc_z=None,
                         nin_nonlin=None, dim_nonlin=None):
     if nin is None:
         nin = options['dim']
@@ -477,6 +494,8 @@ def param_init_gru_cond(options, params, prefix='gru_cond',
         dim_nonlin = dim
     if dimv is None:
         dimv = options['dimv']
+    if dim_enc_z is None:
+        dim_enc_z = options['dim_enc_z']
 
     W = numpy.concatenate([norm_weight(nin, dim),
                            norm_weight(nin, dim)], axis=1)
@@ -509,10 +528,10 @@ def param_init_gru_cond(options, params, prefix='gru_cond',
     params[_p(prefix, 'Wcx')] = Wcx
 
     #variation
-    Vc = norm_weight(dimv,dim*2)
+    Vc = norm_weight(dim_enc_z, dim*2)
     params[_p(prefix, 'Vc')] = Vc
 
-    Vcx = norm_weight(dimv, dim)
+    Vcx = norm_weight(dim_enc_z, dim)
     params[_p(prefix, 'Vcx')] = Vcx
 
     # attention: combined -> hidden
