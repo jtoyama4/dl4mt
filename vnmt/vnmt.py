@@ -448,7 +448,7 @@ def variation_layer(tparams, ctx_means, options, prefix='variation', ctx_y_means
                               name="variation_z_%s" % prefix,n_steps = nsteps)
     assert sample_z != None, 'man , sample z is NONE!!'
     
-    sample_z = tensor.tanh(tensor.dot(sample_z, tparams[_p(prefix, 'W_enc_z')]) + tparams[_p(prefix, 'W_enc_z_b')])
+    enc_z = tensor.tanh(tensor.dot(sample_z, tparams[_p(prefix, 'W_enc_z')]) + tparams[_p(prefix, 'W_enc_z_b')])
     return sample_z, kl_cost
 
 # Conditional GRU layer with Attention

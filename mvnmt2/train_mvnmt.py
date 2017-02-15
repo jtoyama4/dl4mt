@@ -30,10 +30,10 @@ def main(job_id, params):
                      valid_batch_size=params['batchsize'],
                      datasets=['%s/flickr30k/bitext.train.en.tok.txt' % params['basedir'],
                                '%s/flickr30k/bitext.train.de.tok.bpe.txt' % params['basedir'],
-                               '%s/flickr30k/fc7.train.npy' % params['basedir']],
+                               '%s/flickr30k/kelvin_feature/train-cnn.npy' % params['basedir']],
                      valid_datasets=['%s/flickr30k/bitext.val.en.tok.txt' % params['basedir'],
                                      '%s/flickr30k/bitext.val.de.tok.bpe.txt' % params['basedir'],
-                                     '%s/flickr30k/fc7.val.npy' % params['basedir']],
+                                     '%s/flickr30k/kelvin_feature/dev-cnn.npy' % params['basedir']],
                      dictionaries=['%s/flickr30k/bitext.train.en.tok.txt.pkl' % params['basedir'],
                                    '%s/flickr30k/bitext.train.de.tok.bpe.txt.pkl' % params['basedir']],
                      validFreq=1000,
@@ -49,12 +49,13 @@ if __name__ == '__main__':
     parser.add_argument('--load',action='store_true',default=False)
     parser.add_argument('--fine_tuning', action='store_true', default=False)
     parser.add_argument('--modeldir', type=str, default="mvnmt2")
-    parser.add_argument('--finetunedir', type=str, default="vnmt")
+    parser.add_argument('--finetunedir', type=str, default="nmt")
     parser.add_argument('--dim', type=int, default=256)
     parser.add_argument('--dim_word', type=int, default=256)
-    parser.add_argument('--dimv', type=int, default=512)
-    parser.add_argument('--dim_pi', type=int, default=4096)
+    parser.add_argument('--dimv', type=int, default=256)
+    parser.add_argument('--dim_pi', type=int, default=512)
     parser.add_argument('--dim_pic', type=int, default=256)
+    parser.add_argument('--dim_enc_z', type=int, default=256)
     parser.add_argument('--batchsize', type=int, default=32)
     parser.add_argument('--maxlen', type=int, default=50)
     parser.add_argument('--decay_c', type=float, default=0.0005)
@@ -75,8 +76,8 @@ if __name__ == '__main__':
 
     main(0, {
         'basedir': basedir,
-        'model': ['%s/model_mvnmt.npz' % modeldir],
-        'fine_tuning_load':['%s/model_vnmt.npz' % finetunedir],
+        'model': ['%s/model_mvnmt2.npz' % modeldir],
+        'fine_tuning_load':['%s/model_nmt.npz' % finetunedir],
         'validdir': validdir,
         'scriptdir': scriptdir,
         'dim_word': [args.dim_word],
@@ -84,6 +85,7 @@ if __name__ == '__main__':
         'dimv': [args.dimv],
         'dim_pi': [args.dim_pi],
         'dim_pic': [args.dim_pic],
+        'dim_enc_z': [args.dim_enc_z],
         #'n-words': [30000],
         'n-words': [10211,13180],
         'optimizer': ['adadelta'],

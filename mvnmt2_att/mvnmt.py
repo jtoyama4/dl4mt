@@ -493,7 +493,7 @@ def variation_layer(tparams, ctx_means, options, prefix='variation', ctx_y_means
 
     enc_z = tensor.tanh(tensor.dot(sample_z, tparams[_p(prefix, 'W_enc_z')]) + tparams[_p(prefix, 'W_enc_z_b')])
 
-    return enc_z, kl_cost
+    return sample_z, kl_cost
 
 # Conditional GRU layer with Attention
 def param_init_gru_cond(options, params, prefix='gru_cond',

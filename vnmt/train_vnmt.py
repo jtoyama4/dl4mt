@@ -48,7 +48,7 @@ if __name__ == '__main__':
     parser.add_argument('--finetunedir', type=str, default="nmt")
     parser.add_argument('--dim', type=str, default=256)
     parser.add_argument('--dim_word', type=int, default=256)
-    parser.add_argument('--dimv', type=int, default=100)
+    parser.add_argument('--dimv', type=int, default=256)
     parser.add_argument('--batchsize', type=int, default=32)
     parser.add_argument('--maxlen', type=int, default=50)
     parser.add_argument('--decay_c', type=float, default=0.0005)
@@ -70,7 +70,7 @@ if __name__ == '__main__':
     main(0, {
         'model': ['%s/model_vnmt.npz' % modeldir],
         'basedir': basedir,
-        'fine_tuning_load':['%s/model_nmt.npz' % finetunedir],
+        'fine_tuning_load':['%s/model_nmt.iter18000.npz' % finetunedir],
         'validdir': validdir,
         'scriptdir': scriptdir,
         'dim_word': [args.dim_word],

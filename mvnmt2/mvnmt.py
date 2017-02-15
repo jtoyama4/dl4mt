@@ -249,7 +249,8 @@ def param_init_image(options, params, prefix='image', nin=None, nout=None, ortho
 def image_layer(tparams, state_below, options, prefix='image',
             activ='lambda x:x', **kwargs):
     #image = tensor.dot(state_below, tparams[_p(prefix, 'W')]) + tparams[_p(prefix, 'b')])
-
+    if state_below.ndim == 2:
+        state_below = state_below.reshape((1,state_below.shape[0], state_below.shape[1]))
     ctx = tensor.sum(state_below, axis=1)
     return ctx
 
@@ -356,7 +357,7 @@ def gru_layer(tparams, state_below, options, prefix='gru', mask=None,
 
 
 def param_init_variation(options, params, prefix='variation',
-                         nin=None, dim=None, dimctx=None,dimctx_y=None,dim_pic=None,
+                         nin=None, dim=None, dimctx=None,dimctx_y=None,dim_pic=None, dim_pi=None,
                          nin_nonlin=None, dim_nonlin=None,dimv=None, dim_enc_z=None):
     if nin is None:
         nin = options['dim']
@@ -370,6 +371,8 @@ def param_init_variation(options, params, prefix='variation',
         nin_nonlin = nin
     if dim_nonlin is None:
         dim_nonlin = dim
+    if dim_pi is None:
+        dim_pi = options['dim_pi']
     if dimv is None:
         dimv = options['dimv']
     if dim_pic is None:
@@ -377,7 +380,7 @@ def param_init_variation(options, params, prefix='variation',
     if dim_enc_z is None:
         dim_enc_z = options['dim_enc_z']
 
-    W_pri_pi = numpy.concatenate([norm_weight(dimctx,dimv), norm_weight(dim_pic,dimv)], axis=0)
+    W_pri_pi = numpy.concatenate([norm_weight(dimctx,dimv), norm_weight(dim_pi,dimv)], axis=0)
     params[_p(prefix, 'W_pri_pi')] = W_pri_pi
     params[_p(prefix, 'W_pri_pi_b')] = numpy.zeros((dimv,)).astype('float32')
 
@@ -392,7 +395,7 @@ def param_init_variation(options, params, prefix='variation',
     params[_p(prefix, 'W_pri_sigma')] = W_pri_sigma
     params[_p(prefix, 'W_pri_sigma_b')] = numpy.zeros((dimv,)).astype('float32')
 
-    W_post_pi = numpy.concatenate([norm_weight(dimctx,dimv),norm_weight(dimctx_y,dimv),norm_weight(dim_pic,dimv)], axis = 0)
+    W_post_pi = numpy.concatenate([norm_weight(dimctx,dimv),norm_weight(dimctx_y,dimv),norm_weight(dim_pi,dimv)], axis = 0)
     params[_p(prefix, 'W_post_pi')] = W_post_pi
     params[_p(prefix, 'W_post_pi_b')] = numpy.zeros((dimv,)).astype('float32')
     
@@ -716,8 +719,7 @@ def init_params(options):
     params = get_layer('variation')[0](options, params, prefix='variation',
                                        dimctx=ctxdim, dimctx_y=ctxdim, dimv=options['dimv'])
     # image
-    params = get_layer('image')[0](options, params, prefix='image',
-                                       nin=options['dim_pi'], nout=options['dim_pic'])
+    #params = get_layer('image')[0](options, params, prefix='image', nin=options['dim_pi'], nout=options['dim_pic'])
     
     # decoder
     params = get_layer(options['decoder'])[0](options, params,
@@ -756,7 +758,7 @@ def build_model(tparams, options, training=True):
     y_mask = tensor.matrix('y_mask', dtype='float32')
     pi = tensor.matrix('pi', dtype='float32')
     #pi_mask = tensor.matrix('pi_mask', dtyoe='float32')
-
+    pi3 =pi.reshape((pi.shape[0],196,512))
     # for the backward rnn, we just need to invert x and x_mask
     xr = x[::-1]
     xr_mask = x_mask[::-1]
@@ -799,7 +801,7 @@ def build_model(tparams, options, training=True):
                                              mask=yr_mask)
     
     # image feature extraction
-    pic = get_layer('image')[1](tparams, pi, options, prefix='image')
+    pic = get_layer('image')[1](tparams, pi3, options, prefix='image')
 
     # context will be the concatenation of forward and backward rnns
     ctx = concatenate([proj[0], projr[0][::-1]], axis=proj[0].ndim-1)
@@ -996,6 +998,7 @@ def gen_sample(tparams, f_init, f_next, x, pi, options, trng=None, k=1, maxlen=3
     hyp_states = []
 
     # get initial state of decoder rnn and encoder context
+    pi = pi.reshape((196,512))
     ret = f_init(x,pi)
     next_state, ctx0, pic = ret[0], ret[1], ret[2]
     next_w = -1 * numpy.ones((1,)).astype('int64')  # bos indicator
@@ -1213,8 +1216,9 @@ def sgd(lr, tparams, grads, x, mask, y, cost):
 def train(dim_word=100,  # word vector dimensionality
           dim=1000,  # the number of LSTM units
           dimv=100,
-          dim_pi=4096,
+          dim_pi=512,
           dim_pic=256,
+          dim_enc_z=256,
           encoder='gru',
           decoder='gru_cond',
           patience=10,  # early stopping patience
@@ -1275,6 +1279,7 @@ def train(dim_word=100,  # word vector dimensionality
             model_options["dimv"] = dimv
             model_options["dim_pi"] = dim_pi
             model_options["dim_pic"] = dim_pic
+            model_options['dim_enc_z'] = dim_enc_z
 
     print 'Loading data'
     train = TextIterator(datasets[0], datasets[1], datasets[2],
