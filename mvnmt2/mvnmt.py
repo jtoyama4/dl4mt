@@ -248,10 +248,11 @@ def param_init_image(options, params, prefix='image', nin=None, nout=None, ortho
 
 def image_layer(tparams, state_below, options, prefix='image',
             activ='lambda x:x', **kwargs):
-    #image = tensor.dot(state_below, tparams[_p(prefix, 'W')]) + tparams[_p(prefix, 'b')])
-    if state_below.ndim == 2:
+    image = tensor.nnet.relu(tensor.dot(state_below, tparams[_p(prefix, 'W')]) + tparams[_p(prefix, 'b')])
+    """if state_below.ndim == 2:
         state_below = state_below.reshape((1,state_below.shape[0], state_below.shape[1]))
     ctx = tensor.sum(state_below, axis=1)
+    """
     return ctx
 
 
@@ -380,7 +381,7 @@ def param_init_variation(options, params, prefix='variation',
     if dim_enc_z is None:
         dim_enc_z = options['dim_enc_z']
 
-    W_pri_pi = numpy.concatenate([norm_weight(dimctx,dimv), norm_weight(dim_pi,dimv)], axis=0)
+    W_pri_pi = numpy.concatenate([norm_weight(dimctx,dimv), norm_weight(dim_pic,dimv)], axis=0)
     params[_p(prefix, 'W_pri_pi')] = W_pri_pi
     params[_p(prefix, 'W_pri_pi_b')] = numpy.zeros((dimv,)).astype('float32')
 
@@ -395,7 +396,7 @@ def param_init_variation(options, params, prefix='variation',
     params[_p(prefix, 'W_pri_sigma')] = W_pri_sigma
     params[_p(prefix, 'W_pri_sigma_b')] = numpy.zeros((dimv,)).astype('float32')
 
-    W_post_pi = numpy.concatenate([norm_weight(dimctx,dimv),norm_weight(dimctx_y,dimv),norm_weight(dim_pi,dimv)], axis = 0)
+    W_post_pi = numpy.concatenate([norm_weight(dimctx,dimv),norm_weight(dimctx_y,dimv),norm_weight(dim_pic,dimv)], axis = 0)
     params[_p(prefix, 'W_post_pi')] = W_post_pi
     params[_p(prefix, 'W_post_pi_b')] = numpy.zeros((dimv,)).astype('float32')
     
@@ -998,7 +999,7 @@ def gen_sample(tparams, f_init, f_next, x, pi, options, trng=None, k=1, maxlen=3
     hyp_states = []
 
     # get initial state of decoder rnn and encoder context
-    pi = pi.reshape((196,512))
+    pi = pi.reshape((1,4096))
     ret = f_init(x,pi)
     next_state, ctx0, pic = ret[0], ret[1], ret[2]
     next_w = -1 * numpy.ones((1,)).astype('int64')  # bos indicator
