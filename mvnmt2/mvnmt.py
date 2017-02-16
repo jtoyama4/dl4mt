@@ -241,8 +241,8 @@ def param_init_image(options, params, prefix='image', nin=None, nout=None, ortho
         nin = options['dim_pi']
     if nout is None:
         nout = options['dim_pic']
-    #params[_p(prefix, 'W')] = norm_weight(nin, nout, scale=0.01, ortho=ortho)
-    #params[_p(prefix, 'b')] = numpy.zeros((nout,)).astype('float32')
+    params[_p(prefix, 'W')] = norm_weight(nin, nout, scale=0.01, ortho=ortho)
+    params[_p(prefix, 'b')] = numpy.zeros((nout,)).astype('float32')
 
     return params
 
@@ -253,7 +253,7 @@ def image_layer(tparams, state_below, options, prefix='image',
         state_below = state_below.reshape((1,state_below.shape[0], state_below.shape[1]))
     ctx = tensor.sum(state_below, axis=1)
     """
-    return ctx
+    return image
 
 
 
@@ -720,7 +720,7 @@ def init_params(options):
     params = get_layer('variation')[0](options, params, prefix='variation',
                                        dimctx=ctxdim, dimctx_y=ctxdim, dimv=options['dimv'])
     # image
-    #params = get_layer('image')[0](options, params, prefix='image', nin=options['dim_pi'], nout=options['dim_pic'])
+    params = get_layer('image')[0](options, params, prefix='image', nin=options['dim_pi'], nout=options['dim_pic'])
     
     # decoder
     params = get_layer(options['decoder'])[0](options, params,
