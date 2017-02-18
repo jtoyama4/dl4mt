@@ -77,7 +77,7 @@ if __name__ == '__main__':
     main(0, {
         'basedir': basedir,
         'model': ['%s/model_mvnmt2.npz' % modeldir],
-        'fine_tuning_load':['%s/model_vnmt.npz' % finetunedir],
+        'fine_tuning_load':['%s/model_nmt.npz' % finetunedir],
         'validdir': validdir,
         'scriptdir': scriptdir,
         'dim_word': [args.dim_word],
