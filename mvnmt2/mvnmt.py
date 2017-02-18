@@ -248,7 +248,7 @@ def param_init_image(options, params, prefix='image', nin=None, nout=None, ortho
 
 def image_layer(tparams, state_below, options, prefix='image',
             activ='lambda x:x', **kwargs):
-    image = tensor.nnet.relu(tensor.dot(state_below, tparams[_p(prefix, 'W')]) + tparams[_p(prefix, 'b')])
+    image = tensor.nnet.tanh(tensor.dot(state_below, tparams[_p(prefix, 'W')]) + tparams[_p(prefix, 'b')])
     """if state_below.ndim == 2:
         state_below = state_below.reshape((1,state_below.shape[0], state_below.shape[1]))
     ctx = tensor.sum(state_below, axis=1)

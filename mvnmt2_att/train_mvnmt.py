@@ -27,7 +27,7 @@ def main(job_id, params):
                      lrate=params['learning-rate'][0],
                      optimizer=params['optimizer'][0],
                      maxlen=50,
-                     batch_size=64,
+                     batch_size=32,
                      valid_batch_size=64,
                      datasets=['%s/flickr30k/bitext.train.en.tok.txt' % basedir,
                                '%s/flickr30k/bitext.train.de.tok.bpe.txt' % basedir,
@@ -38,9 +38,9 @@ def main(job_id, params):
                      dictionaries=['%s/flickr30k/bitext.train.en.tok.txt.pkl' % basedir,
                                    '%s/flickr30k/bitext.train.de.tok.bpe.txt.pkl' % basedir],
                      validFreq=1000,
-                     dispFreq=1,
+                     dispFreq=100,
                      saveFreq=1000,
-                     sampleFreq=50,
+                     sampleFreq=500,
                      use_dropout=params['use-dropout'][0],
                      overwrite=False)
     return validerr
@@ -55,7 +55,7 @@ if __name__ == '__main__':
 
     main(0, {
         'model': ['%s/models/mvnmt2_att/model_mvnmt2_att.npz' % basedir],
-        'fine_tuning_load':['%s/models/vnmt_no_enc/model_vnmt.npz' % basedir],
+        'fine_tuning_load':['%s/models/vnmt256/model_vnmt.npz' % basedir],
         'dim_word': [256],
         'dim': [256],
         'dimv': [256],
@@ -65,7 +65,7 @@ if __name__ == '__main__':
         #'n-words': [30000],
         'n-words': [10211,13180],
         'optimizer': ['adadelta'],
-        'decay-c': [0.0005],
+        'decay-c': [0.001],
         'clip-c': [1.],
         'use-dropout': [False],
         #'learning-rate': [0.0001],
