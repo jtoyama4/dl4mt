@@ -10,7 +10,7 @@
 #    echo $model
 #done
 
-MODEL_DIR="../models/mvnmt2/"
+MODEL_DIR="../models/mvnmt2_att/"
 TYPE="mvnmt2"
 OUTDIR="all_result"
 N=1000

@@ -54,8 +54,8 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     main(0, {
-        'model': ['%s/models/mvnmt2_att/model_mvnmt2_att.npz' % basedir],
-        'fine_tuning_load':['%s/models/vnmt256/model_vnmt.npz' % basedir],
+        'model': ['%s/models/mvnmt2_att/model_mvnmt2.npz' % basedir],
+        'fine_tuning_load':['%s/model_nmt.npz' % finetunedir],
         'dim_word': [256],
         'dim': [256],
         'dimv': [256],
