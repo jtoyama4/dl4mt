@@ -53,12 +53,12 @@ do
     if [ ! -f $TARGET ] ; then
         THEANO_FLAGS='device=cpu' python $TRANSLATE_SCRIPT -p $P -k $K -o $OPTION_FILE $MODEL $SRC_DICT $DST_DICT $SRC $TARGET
     fi
-    if [ ! -f ${TARGET_MERGED} ] ; then
+    #if [ ! -f ${TARGET_MERGED} ] ; then
         sed "s/@@ //g" ${TARGET} > ${TARGET_MERGED}
-    fi
-    if [ ! -f ${TARGET_DETOK} ] ; then
+    #fi
+    #if [ ! -f ${TARGET_DETOK} ] ; then
         perl ../script/detokenizer.perl -l de < ${TARGET_MERGED} > ${TARGET_DETOK}
-    fi
+    #fi
 
     N=$((N+STEP))
 done

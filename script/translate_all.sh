@@ -16,14 +16,14 @@ OUTDIR=$3
 N=1000
 STEP=1000
 
-P=3 # process number
+P=10 # process number
 #K=12 # beam width
 K=12 # beam width
 SRC_DICT="../flickr30k/bitext.train.en.tok.txt.pkl"
-DST_DICT="../flickr30k/bitext.train.de.tok.txt.pkl"
+DST_DICT="../flickr30k/bitext.train.de.tok.bpe.txt.pkl"
 SRC="../flickr30k/bitext.test.en.tok.txt"
 OPTION_FILE="$MODEL_DIR/model_$TYPE.npz.pkl"
-if [ "$1" == "nmt" ] ; then
+if [ "$2" == "nmt" ] ; then
     TRANSLATE_SCRIPT="../session3/translate.py"
 else
     TRANSLATE_SCRIPT="../$1/translate.py"

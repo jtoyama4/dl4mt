@@ -9,7 +9,7 @@ METEORJAR="../script/meteor-1.5/meteor-1.5.jar"
 RESULTDIR="./all_result"
 SPLIT="val"
 
-TRUE="../flickr30k/${SPLIT}.norm.de.txt"
+TRUE="../flickr30k/${SPLIT}.norm.ln.de"
 
 
 for SRC in `find $RESULTDIR -name "${SPLIT}_result.*.merged.detok.txt" | sort -V`
@@ -18,9 +18,9 @@ do
     NUM=${FILE##${SPLIT}_result.*.merged.detok.txt}
 
     #echo "${RESULTDIR}/${NUM}.meteor.txt"
-    if [ ! -f "${RESULTDIR}/${NUM}.meteor.txt" ] ; then
+    #if [ ! -f "${RESULTDIR}/${NUM}.meteor.txt" ] ; then
         java -Xmx2G -jar $METEORJAR $SRC $TRUE -l de | tee "${RESULTDIR}/${NUM}.meteor.txt"
-    fi
+    #fi
     if [ ! -f "${RESULTDIR}/${NUM}.norm.meteor.txt" ] ; then
     java -Xmx2G -jar $METEORJAR $SRC $TRUE -l de -norm | tee "${RESULTDIR}/${NUM}.norm.meteor.txt"
     fi

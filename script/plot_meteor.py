@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 import re
 import os
 import os.path as osp
+import sys
 
 from natsort import natsorted
 
@@ -17,7 +18,11 @@ def main(result_dir, title, outfile):
     for f in natsorted(os.listdir(result_dir)):
         if pat.match(f):
             with open(osp.join(result_dir,f)) as g:
-                meteor.append(float(g.readlines()[-1].split(":")[-1].strip())*100)
+                try:
+                    meteor.append(float(g.readlines()[-1].split(":")[-1].strip())*100)
+                except:
+                    print(g)
+                    sys.exit(0)
 
     plt.plot(meteor, label="METEOR", color="b")
     plt.legend()
