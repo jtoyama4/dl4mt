@@ -771,7 +771,7 @@ def build_model(tparams, options, training=True):
     y_mask = tensor.matrix('y_mask', dtype='float32')
     pi = tensor.matrix('pi', dtype='float32')
     #pi_mask = tensor.matrix('pi_mask', dtyoe='float32')
-    pi3 = pi.reshape((pi.shape[0],196,512))
+    #pi3 = pi.reshape((pi.shape[0],196,512))
     
     # for the backward rnn, we just need to invert x and x_mask
     xr = x[::-1]
@@ -825,7 +825,8 @@ def build_model(tparams, options, training=True):
     ctx_mean = (ctx * x_mask[:, :, None]).sum(0) / x_mask.sum(0)[:, None]
     ctx_y_mean = (ctx_y * y_mask[:, :, None]).sum(0) / y_mask.sum(0)[:, None]
     
-    pic = get_layer('image')[1](tparams, [pi3, ctx_mean], options, prefix='image')
+    #pic = get_layer('image')[1](tparams, [pi3, ctx_mean], options, prefix='image')
+    pic = get_layer('image')[1](tparams, [pi, ctx_mean], options, prefix='image')
 
     # or you can use the last state of forward + backward encoder rnns
     # ctx_mean = concatenate([proj[0][-1], projr[0][-1]], axis=proj[0].ndim-2)

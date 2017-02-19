@@ -80,7 +80,7 @@ class TextIterator:
                     self.count += 1
                     continue
 
-                noise = numpy.random.normal(size=4096)
+                noise = numpy.random.normal(size=4096).astype("float32")
                 noise[noise<0.0] = 0.0
                 
                 source.append(ss)

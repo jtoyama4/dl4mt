@@ -17,7 +17,13 @@ def main(result_dir, title, outfile):
     for f in natsorted(os.listdir(result_dir)):
         if pat.match(f):
             with open(osp.join(result_dir,f)) as g:
-                meteor.append(float(g.readlines()[-1].split(":")[-1].strip())*100)
+                try:
+                    s = g.readlines()[-1].split(":")[-1].strip()
+                    v = float(s)
+                except:
+                    print("skip {} : {}".format(f,s))
+                    v = 0
+                meteor.append(v*100)
 
     plt.plot(meteor, label="METEOR", color="b")
     plt.legend()

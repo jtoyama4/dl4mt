@@ -10,8 +10,8 @@
 #    echo $model
 #done
 
-MODEL_DIR="../models/mvnmt2/"
-TYPE="mvnmt"
+MODEL_DIR="../models/mvnmt2_noise_only/"
+TYPE="mvnmt2"
 OUTDIR="all_result"
 N=1000
 STEP=1000

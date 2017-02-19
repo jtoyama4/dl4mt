@@ -759,7 +759,7 @@ def build_model(tparams, options, training=True):
     y_mask = tensor.matrix('y_mask', dtype='float32')
     pi = tensor.matrix('pi', dtype='float32')
     #pi_mask = tensor.matrix('pi_mask', dtyoe='float32')
-    pi3 =pi.reshape((pi.shape[0],196,512))
+    #pi3 =pi.reshape((pi.shape[0],196,512))
     # for the backward rnn, we just need to invert x and x_mask
     xr = x[::-1]
     xr_mask = x_mask[::-1]
@@ -802,7 +802,8 @@ def build_model(tparams, options, training=True):
                                              mask=yr_mask)
     
     # image feature extraction
-    pic = get_layer('image')[1](tparams, pi3, options, prefix='image')
+    #pic = get_layer('image')[1](tparams, pi3, options, prefix='image')
+    pic = get_layer('image')[1](tparams, pi, options, prefix='image')
 
     # context will be the concatenation of forward and backward rnns
     ctx = concatenate([proj[0], projr[0][::-1]], axis=proj[0].ndim-1)
