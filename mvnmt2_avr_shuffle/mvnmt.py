@@ -18,6 +18,7 @@ import time
 from collections import OrderedDict
 
 from data_iterator import TextIterator
+from shuffle_data_iterator import ShuffleTextIterator
 
 profile = False
 
@@ -1297,11 +1298,11 @@ def train(dim_word=100,  # word vector dimensionality
     print(datasets[2])
     print(datasets[3])
     print(datasets[4])
-    train = TextIterator(datasets[0], datasets[1], datasets[2], datasets[3], datasets[4],
-                         dictionaries[0], dictionaries[1],
-                         n_words_source=n_words_src, n_words_target=n_words,
-                         batch_size=batch_size,
-                         maxlen=maxlen)
+    train = ShuffleTextIterator(datasets[0], datasets[1], datasets[2], datasets[3], datasets[4],
+                                dictionaries[0], dictionaries[1],
+                                n_words_source=n_words_src, n_words_target=n_words,
+                                batch_size=batch_size,
+                                maxlen=maxlen)
     valid = TextIterator(valid_datasets[0], valid_datasets[1], valid_datasets[2], valid_datasets[3], datasets[4],
                          dictionaries[0], dictionaries[1],
                          n_words_source=n_words_src, n_words_target=n_words,

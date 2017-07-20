@@ -2,8 +2,6 @@ import cPickle as pkl
 import gzip
 import numpy
 import os
-import random
-
 
 def fopen(filename, mode='r'):
     if filename.endswith('.gz'):
@@ -13,17 +11,16 @@ def fopen(filename, mode='r'):
 
 class TextIterator:
     """Simple Bitext iterator."""
-
-    def __init__(self, source, target, image, global_fc7, class_txt,
+    def __init__(self, source, target,image,global_fc7, class_txt,
                  source_dict, target_dict,
                  batch_size=128,
                  maxlen=100,
                  n_words_source=-1,
                  n_words_target=-1):
-        self.source = open(source, 'r').readlines()
-        self.target = open(target, 'r').readlines()
-        self.image_list = open(image, 'r').readlines()
-        self.class_txt = open(class_txt, 'r').readlines()
+        self.source = fopen(source, 'r')
+        self.target = fopen(target, 'r')
+        self.image_list = fopen(image, 'r')
+        self.class_txt = fopen(class_txt, 'r')
         self.image_basedir = os.path.dirname(image)
         self.global_fc7 = numpy.load(global_fc7)
         with open(source_dict, 'rb') as f:
@@ -38,7 +35,7 @@ class TextIterator:
         self.n_words_target = n_words_target
 
         self.end_of_data = False
-
+        
         self.count = 0
 
     def __iter__(self):
@@ -51,13 +48,13 @@ class TextIterator:
         self.class_txt.seek(0)
         self.count = 0
 
-    def get_index(self, cls, top_n):
-        with open(os.path.join(self.image_basedir, cls.strip()), 'r') as f:
+    def get_index(self,cls,top_n):
+        with open(os.path.join(self.image_basedir,cls.strip()),'r') as f:
             result = []
             idx_result = []
             line = f.readlines()
-            for idx, c in enumerate(line):
-                if idx == top_n:
+            for idx,c in enumerate(line):
+                if idx==top_n:
                     break
                 if c not in result:
                     result.append(c)
@@ -77,10 +74,9 @@ class TextIterator:
         try:
             # actual work here
             while True:
-                self.idx = random.randint(0, len(self.source) - 1)
 
                 # read from source file and map to word index
-                ss = self.source[self.idx]
+                ss = self.source.readline()
                 if ss == "":
                     raise IOError
                 ss = ss.strip().split()
@@ -90,7 +86,7 @@ class TextIterator:
                     ss = [w if w < self.n_words_source else 1 for w in ss]
 
                 # read from source file and map to word index
-                tt = self.target[self.idx]
+                tt = self.target.readline()
                 if tt == "":
                     raise IOError
                 tt = tt.strip().split()
@@ -103,13 +99,12 @@ class TextIterator:
                     self.count += 1
                     continue
 
-                cls = self.class_txt[self.idx]
-                idx = self.get_index(cls, 4)
-                fc7_global = self.global_fc7[self.idx]
-                fc7_global = fc7_global[numpy.newaxis, :]
-                ii = numpy.load(os.path.join(self.image_basedir,
-                                             self.image_list[self.idx].strip()))
-                ii = numpy.concatenate((fc7_global, ii), axis=0)
+                cls = self.class_txt.readline()
+                idx = self.get_index(cls,4)
+                fc7_global = self.global_fc7[self.count]
+                fc7_global = fc7_global[numpy.newaxis,:]
+                ii = numpy.load(os.path.join(self.image_basedir, self.image_list.readline().strip()))
+                ii = numpy.concatenate((fc7_global,ii), axis=0)
                 source.append(ss)
                 target.append(tt)
                 image.append(ii)
