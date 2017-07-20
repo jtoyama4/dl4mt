@@ -48,12 +48,13 @@ def main(job_id, params):
                      overwrite=False)
     return validerr
 
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='')
-    parser.add_argument('--load',action='store_true',default=False)
+    parser.add_argument('--load', action='store_true', default=False)
     parser.add_argument('--fine_tuning', action='store_true', default=False)
     parser.add_argument('--modeldir', type=str, default="mvnmt2_rnn")
-    parser.add_argument('--finetunedir', type=str, default="vnmt")
+    parser.add_argument('--finetunedir', type=str, default="nmt")
     parser.add_argument('--dim', type=int, default=256)
     parser.add_argument('--dim_word', type=int, default=256)
     parser.add_argument('--dimv', type=int, default=512)
@@ -80,7 +81,7 @@ if __name__ == '__main__':
     main(0, {
         'basedir': basedir,
         'model': ['%s/model_mvnmt.npz' % modeldir],
-        'fine_tuning_load':['%s/model_vnmt.npz' % finetunedir],
+        'fine_tuning_load': ['%s/model_nmt.npz' % finetunedir],
         'validdir': validdir,
         'scriptdir': scriptdir,
         'dim_word': [args.dim_word],
@@ -89,7 +90,7 @@ if __name__ == '__main__':
         'dim_pi': [args.dim_pi],
         'dim_pic': [args.dim_pic],
         #'n-words': [30000],
-        'n-words': [10211,13180],
+        'n-words': [10211, 13180],
         'optimizer': ['adadelta'],
         'decay-c': [args.decay_c],
         'clip-c': [1.],
@@ -100,4 +101,3 @@ if __name__ == '__main__':
         'batchsize': args.batchsize,
         'maxlen': args.maxlen,
         'fine_tuning': [args.fine_tuning]})
-
