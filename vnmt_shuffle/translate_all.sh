@@ -10,7 +10,7 @@
 #    echo $model
 #done
 
-MODEL_DIR="../models/vnmt/"
+MODEL_DIR="../models/vnmt_shuffle/"
 TYPE="vnmt"
 OUTDIR="all_result"
 N=1000

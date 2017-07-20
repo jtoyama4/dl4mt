@@ -10,7 +10,7 @@
 #    echo $model
 #done
 
-MODEL_DIR="../models/mvnt2_rnn/"
+MODEL_DIR="../models/mvnt2_rnn_shuffle/"
 TYPE="mvnmt"
 OUTDIR="all_result"
 N=1000
